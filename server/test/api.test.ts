@@ -27,6 +27,13 @@ function testApp(seed = false) {
   return built;
 }
 
+test('healthz answers without touching the measurement', async () => {
+  const { app } = testApp();
+  const res = await request(app).get('/healthz');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+});
+
 test('health is public and does not claim a key', async () => {
   const { app } = testApp();
   const res = await request(app).get('/api/health');

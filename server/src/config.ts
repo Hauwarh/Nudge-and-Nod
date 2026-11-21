@@ -8,6 +8,8 @@ export interface Config {
   seedDemo: boolean;
   logLevel: string;
   isProduction: boolean;
+  /** How long the main server waits for the SDK process before killing it. */
+  startupTimeoutMs: number;
 }
 
 function flag(value: string | undefined, fallback: boolean): boolean {
@@ -25,5 +27,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     seedDemo: flag(env.SEED_DEMO, true),
     logLevel: env.LOG_LEVEL?.trim() || 'info',
     isProduction: env.NODE_ENV === 'production',
+    startupTimeoutMs:
+      Number(env.SMARTSPECTRA_STARTUP_TIMEOUT_MS) > 0
+        ? Number(env.SMARTSPECTRA_STARTUP_TIMEOUT_MS)
+        : 20_000,
   };
 }

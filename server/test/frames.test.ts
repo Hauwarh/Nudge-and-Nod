@@ -43,6 +43,7 @@ test('jpegToRgb returns packed RGB', () => {
   assert.equal(frame?.width, width);
   assert.equal(frame?.height, height);
   assert.equal(frame?.rgb.length, width * height * 3);
+  assert.notEqual(frame?.rgb.length, width * height * 4);
   assert.ok((frame?.rgb[0] ?? 255) < 40);
   assert.ok((frame?.rgb[1] ?? 0) > 5);
 });

@@ -45,7 +45,7 @@ export function createApp(
         "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
       );
     }
-    if (req.path !== '/api/health') {
+    if (req.path !== '/api/health' && req.path !== '/healthz') {
       const started = Date.now();
       res.on('finish', () => {
         logger.info(
@@ -60,6 +60,10 @@ export function createApp(
       });
     }
     next();
+  });
+
+  app.get('/healthz', (_req, res) => {
+    res.json({ ok: true });
   });
 
   app.use('/api', apiRouter(store, config));

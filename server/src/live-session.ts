@@ -10,7 +10,13 @@ import {
   type SignalSnapshot,
 } from './metrics.js';
 import { acceptTimestamp, jpegToRgb } from './frames.js';
-import { friendlySdkError, loadSdk, type LoadedSdk, type SdkInstance } from './sdk.js';
+import {
+  friendlySdkError,
+  isBenignSdkNoise,
+  loadSdk,
+  type LoadedSdk,
+  type SdkInstance,
+} from './sdk.js';
 
 export interface TracePoint {
   t: number;
@@ -77,7 +83,6 @@ export class LiveSession {
         ...loaded.breathingMetrics,
         loaded.MetricType.PULSE_RATE,
         loaded.MetricType.HRV,
-        loaded.MetricType.ARTERIAL_PRESSURE_TRACE,
         loaded.MetricType.EXPRESSIONS,
         loaded.MetricType.TALKING,
       ],
@@ -108,6 +113,13 @@ export class LiveSession {
       this.emit({ type: 'processing', status });
     });
     sdk.on('error', (code: number, message: string, retryable: boolean) => {
+      // Vulkan, MediaPipe tensor notes, and the model-path fallback are native
+      // log lines. They are not a failed check-in. A machine without a GPU
+      // still measures pulse and breathing.
+      if (isBenignSdkNoise(message)) {
+        logger.info({ code, message }, 'smartspectra notice, not shown');
+        return;
+      }
       logger.warn({ code, message, retryable }, 'smartspectra session error');
       this.emit({
         type: 'sdk_error',
@@ -230,11 +242,17 @@ export class LiveSession {
     const frame = jpegToRgb(jpegBytes);
     if (!frame) return { ok: false, reason: 'decode' };
     this.lastTs = timestampUs;
+    // Packed RGB, not RGBA. Stride is width * 3. timestampUs is monotonic
+    // microseconds (the phone's performance clock), the same contract as
+    // Number(process.hrtime.bigint() / 1000n) on a local probe: strictly
+    // increasing, not wall-clock. A 640x480 frame is stride 1920.
+    if (frame.rgb.length !== frame.width * frame.height * 3) return { ok: false, reason: 'decode' };
+    const stride = frame.width * 3;
     const sent = this.sdk.sendFrame(
       frame.rgb,
       frame.width,
       frame.height,
-      frame.width * 3,
+      stride,
       this.loaded.PixelFormat.kRGB,
       timestampUs,
     );

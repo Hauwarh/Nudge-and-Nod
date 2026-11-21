@@ -104,6 +104,13 @@ export function releaseSdk(id: string): void {
   if (holder === id) holder = null;
 }
 
+/** Native log lines that are not a failed measurement. Do not show these in the check-in. */
+export function isBenignSdkNoise(message: string): boolean {
+  return /vulkan|mediapipe|feedback tensor|model path|falling back to remote|phasic-bp/i.test(
+    message,
+  );
+}
+
 export function friendlySdkError(code: number): string {
   switch (code) {
     case 2:

@@ -289,8 +289,15 @@ export function CheckIn({
           stopCamera();
           setError(typeof body.message === 'string' ? body.message : 'The check-in stopped.');
           setPhase('error');
-        } else if (body.type === 'sdk_error') {
-          setError(typeof body.message === 'string' ? body.message : 'The measurement stopped.');
+        } else if (body.type === 'sdk_error' || (body.type === 'error' && body.code === 'presage')) {
+          running.current = false;
+          stopCamera();
+          setError(
+            typeof body.message === 'string'
+              ? body.message
+              : "Couldn't reach Presage. Check the API key, then try again. The sample check-in still works.",
+          );
+          setPhase('error');
         }
       };
       ws.onclose = () => {

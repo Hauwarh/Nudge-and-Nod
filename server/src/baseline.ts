@@ -99,7 +99,8 @@ export const COMPARISON_RULES = {
   breathingReadable: [BREATHING_READ_MIN, BREATHING_READ_MAX],
   freshWithinMs: 3000,
   dayKey: 'UTC date of the stored timestamp (YYYY-MM-DD)',
-  notUsedForUsual: ['HRV', 'expressions', 'talking', 'arterial pressure shape'],
+  notUsedForUsual: ['HRV', 'expressions', 'talking'],
+  bloodPressureWaveform: 'not requested; needs Vulkan and is not pulse or breathing',
 } as const;
 
 export function quantile(sortedAsc: readonly number[], p: number): number {

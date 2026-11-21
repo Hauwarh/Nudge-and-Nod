@@ -6,7 +6,7 @@ services:
     name: nudge-and-nod
     runtime: docker
     plan: free
-    healthCheckPath: /api/health
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production

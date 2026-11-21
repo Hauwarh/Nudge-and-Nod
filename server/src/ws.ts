@@ -6,9 +6,9 @@ import type { Config } from './config.js';
 import { readCookie } from './cookies.js';
 import { NOT_A_MEDICAL_DEVICE, type Mood } from './copy.js';
 import { parseFrame } from './frames.js';
-import { LiveSession } from './live-session.js';
+import { guardedOpen, SdkStartupError, type SdkHost } from './sdk-host.js';
 import { logger } from './logger.js';
-import { releaseSdk, tryHoldSdk } from './sdk.js';
+import { releaseSdk } from './sdk.js';
 import { buildStory } from './story.js';
 import type { Store } from './store.js';
 
@@ -86,7 +86,7 @@ function handleConnection(
   let memberName = 'They';
   let mood: Mood | null = null;
   let note: string | null = null;
-  let live: LiveSession | null = null;
+  let live: SdkHost | null = null;
   let finalized = false;
   let framesThisSecond = 0;
   let secondStarted = Date.now();
@@ -110,6 +110,7 @@ function handleConnection(
     const id = checkinId;
     try {
       if (sessionLive && id) {
+        await sessionLive.pullSummary();
         const kept = sessionLive.snapshot.kept;
         const covered = sessionLive.keptCoverage();
         const endedAt = new Date();
@@ -208,14 +209,22 @@ function handleConnection(
     memberId = member.id;
     memberName = member.displayName;
     const id = randomUUID();
-    if (!tryHoldSdk(id)) {
+    try {
+      live = await guardedOpen(id, {
+        apiKey: config.apiKey,
+        telemetry: config.telemetry,
+        startupTimeoutMs: config.startupTimeoutMs,
+      });
+    } catch (err) {
+      const startup = err instanceof SdkStartupError ? err : null;
+      const message = err instanceof Error ? err.message : 'The measurement did not start.';
+      logger.warn({ err: message }, 'live session did not start');
       send(socket, {
         type: 'error',
-        code: 'busy',
-        message:
-          'Someone is already checking in. This server can watch one person at a time. Try again in a minute.',
+        code: startup?.code ?? 'presage',
+        message,
       });
-      socket.close(1013, 'busy');
+      socket.close(1013, startup?.code ?? 'presage');
       return;
     }
     checkinId = id;
@@ -230,10 +239,17 @@ function handleConnection(
       });
       if (mood || note) store.touchCheckin(id, household!.id, { mood, note });
 
-      live = new LiveSession(config.apiKey, config.telemetry);
-      live.onUpdate((message) => send(socket, message));
-      await live.open();
-      if (finalized || socket.readyState !== WebSocket.OPEN) return;
+      live.onUpdate((message) => {
+        send(socket, message);
+        if (message.type === 'sdk_error' && message.code === 'presage') void finalize('drop');
+      });
+      if (finalized || socket.readyState !== WebSocket.OPEN) {
+        await live.close();
+        releaseSdk(id);
+        live = null;
+        checkinId = null;
+        return;
+      }
       capTimer = setTimeout(() => {
         send(socket, {
           type: 'error',

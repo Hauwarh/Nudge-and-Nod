@@ -65,7 +65,11 @@ On the check-in itself, each signal is **warming up** (no number, never a zero),
 
 ## Architecture
 
-SmartSpectra has no browser SDK. The phone captures frames. The server, on a glibc 2.35+ Linux host, runs the Node SDK. The SDK’s own docs say native state is process-global, so this server measures **one person at a time**. A second check-in is asked to wait.
+SmartSpectra has no browser SDK. The phone captures frames. A separate process on a glibc 2.35+ Linux host runs the Node SDK, so a slow or stuck native call cannot freeze the HTTP server or the sample house. If that process does not become ready (20 seconds by default), it is killed and the check-in says Presage could not be reached. The SDK’s own docs say native state is process-global, so this server still measures **one person at a time**. A second check-in is asked to try again shortly.
+
+Frames handed to `sendFrame` are packed RGB, not RGBA. The stride is `width * 3` (a 640×480 frame is stride 1920). Timestamps are monotonic microseconds, not wall-clock time. `PixelFormat.kRGB` and `FrameTransform.kNone` match a real-key probe on Linux x64. The blood-pressure waveform is not requested. A machine without Vulkan logs a harmless native warning; that line stays in the server log and is not shown as a failed check-in.
+
+Render’s health check is `GET /healthz`. It does not touch the SDK, including while a measurement is starting.
 
 ```mermaid
 flowchart LR
