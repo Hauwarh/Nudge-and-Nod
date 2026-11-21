@@ -1,0 +1,32 @@
+{
+  "name": "nudge-and-nod",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "A calm daily check-in for carers and the people they look after. Live camera signals via the SmartSpectra Node SDK.",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "npm run start -w server",
+    "test": "npm run test -w server",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "probe": "npm run probe -w server"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1"
+  }
+}

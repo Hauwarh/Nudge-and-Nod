@@ -1,0 +1,20 @@
+# Render Blueprint. On a phone: render.com → New → Blueprint → connect this repo.
+# Free web services sleep when idle, use an ephemeral disk, and have 512MB of RAM.
+# Set SMARTSPECTRA_API_KEY in the dashboard. Do not commit the key.
+services:
+  - type: web
+    name: nudge-and-nod
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SEED_DEMO
+        value: "true"
+      - key: SMARTSPECTRA_TELEMETRY
+        value: "false"
+      - key: LOG_LEVEL
+        value: info
+      - key: SMARTSPECTRA_API_KEY
+        sync: false
