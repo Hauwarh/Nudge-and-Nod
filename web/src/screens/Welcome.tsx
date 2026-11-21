@@ -56,6 +56,7 @@ export function Welcome({ onEntered, onCreate }: { onEntered: () => void; onCrea
           <label htmlFor="code">House word</label>
           <input
             id="code"
+            type="text"
             value={code}
             onChange={(event) => setCode(event.target.value)}
             autoCapitalize="none"
@@ -69,6 +70,7 @@ export function Welcome({ onEntered, onCreate }: { onEntered: () => void; onCrea
           <label htmlFor="pin">PIN</label>
           <input
             id="pin"
+            type="text"
             value={pin}
             onChange={(event) => setPin(event.target.value)}
             inputMode="numeric"

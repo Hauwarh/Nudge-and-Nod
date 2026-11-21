@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
 import { dayLabel, whole } from '../format';
-import type { Story } from '../types';
+import type { Story, StoryDay } from '../types';
 import { DayChart } from '../components/DayChart';
 import { Disclaimer, Shell, VerdictLabel, Wordmark } from '../components/ui';
 
@@ -18,9 +18,11 @@ export function StoryScreen({
 }) {
   const [story, setStory] = useState<Story | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showEarlier, setShowEarlier] = useState(false);
 
   useEffect(() => {
     let cancel = false;
+    setShowEarlier(false);
     api<Story>(`/api/people/${memberId}/story`)
       .then((next) => {
         if (!cancel) setStory(next);
@@ -71,49 +73,11 @@ export function StoryScreen({
           {story.days.length === 0 ? (
             <p>Nothing written down yet.</p>
           ) : (
-            <ol className="timeline">
-              {[...story.days].reverse().map((day) => (
-                <li key={day.id} className={day.status === 'different' ? 'different' : undefined}>
-                  <p className="day-date">{dayLabel(day.at)}</p>
-                  <div>
-                    <p style={{ margin: 0 }}>
-                      <strong>{day.moodLabel ?? 'No picture'}</strong>
-                      {day.pulse !== null ? ` · pulse ${whole(day.pulse)}` : ''}
-                      {day.breathing !== null ? ` · breathing ${whole(day.breathing)}` : ''}
-                    </p>
-                    <p className="fine" style={{ margin: '0.15rem 0 0' }}>
-                      {day.pulseValidSeconds !== null
-                        ? `${day.pulseValidSeconds}s steady pulse`
-                        : 'pulse seconds unknown'}
-                      {day.breathingValidSeconds !== null
-                        ? ` · ${day.breathingValidSeconds}s steady breathing`
-                        : ''}
-                      {day.pulseSamples !== null ? ` · ${day.pulseSamples} pulse samples` : ''}
-                      {day.endedReason === 'withdrawn' ? ' · agreement withdrawn' : ''}
-                    </p>
-                    {(day.hrvRmssd !== null || day.expressionWords) && (
-                      <p className="fine" style={{ margin: '0.15rem 0 0' }}>
-                        All signals, not used for usual or different:
-                        {day.hrvRmssd !== null ? ` RMSSD ${Math.round(day.hrvRmssd)} ms` : ''}
-                        {day.hrvSdnn !== null ? `, SDNN ${Math.round(day.hrvSdnn)} ms` : ''}
-                        {day.expressionWords ? `. Camera saw ${day.expressionWords}` : ''}. Not a
-                        wellbeing score.
-                      </p>
-                    )}
-                    <p className="fine" style={{ margin: '0.15rem 0 0' }}>
-                      {day.status === 'different'
-                        ? 'Different from the days before it'
-                        : day.status === 'usual'
-                          ? 'Inside their own spread'
-                          : day.status === 'learning'
-                            ? 'Written down, not compared yet'
-                            : 'No steady stretch'}
-                    </p>
-                    {day.note && <p className="note-quote">“{day.note}”</p>}
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <DayList
+              days={[...story.days].reverse()}
+              showEarlier={showEarlier}
+              onToggle={() => setShowEarlier((open) => !open)}
+            />
           )}
           <details className="method">
             <summary>How “usual” is decided</summary>
@@ -139,5 +103,80 @@ export function StoryScreen({
         </>
       )}
     </Shell>
+  );
+}
+
+const RECENT_DAYS = 4;
+
+function allSignalsSentence(day: StoryDay): string | null {
+  const parts: string[] = [];
+  if (day.hrvRmssd !== null) parts.push(`RMSSD ${Math.round(day.hrvRmssd)} ms`);
+  if (day.hrvSdnn !== null) parts.push(`SDNN ${Math.round(day.hrvSdnn)} ms`);
+  if (day.expressionWords) parts.push(`the camera saw ${day.expressionWords}`);
+  if (parts.length === 0) return null;
+  return `All signals, not used for usual or different: ${parts.join(', ')}. Not a wellbeing score.`;
+}
+
+function DayList({
+  days,
+  showEarlier,
+  onToggle,
+}: {
+  days: StoryDay[];
+  showEarlier: boolean;
+  onToggle: () => void;
+}) {
+  const visible = showEarlier ? days : days.slice(0, RECENT_DAYS);
+  const hidden = days.length - visible.length;
+  return (
+    <>
+      <ol className="timeline">
+        {visible.map((day) => {
+          const signals = allSignalsSentence(day);
+          return (
+            <li key={day.id} className={day.status === 'different' ? 'different' : undefined}>
+              <p className="day-date">{dayLabel(day.at)}</p>
+              <div>
+                <p style={{ margin: 0 }}>
+                  <strong>{day.moodLabel ?? 'No picture'}</strong>
+                  {day.pulse !== null ? ` · pulse ${whole(day.pulse)}` : ''}
+                  {day.breathing !== null ? ` · breathing ${whole(day.breathing)}` : ''}
+                </p>
+                <p className="fine" style={{ margin: '0.15rem 0 0' }}>
+                  {day.pulseValidSeconds !== null
+                    ? `${day.pulseValidSeconds}s steady pulse`
+                    : 'pulse seconds unknown'}
+                  {day.breathingValidSeconds !== null
+                    ? ` · ${day.breathingValidSeconds}s steady breathing`
+                    : ''}
+                  {day.pulseSamples !== null ? ` · ${day.pulseSamples} pulse samples` : ''}
+                  {day.endedReason === 'withdrawn' ? ' · agreement withdrawn' : ''}
+                </p>
+                {signals && (
+                  <p className="fine" style={{ margin: '0.15rem 0 0' }}>
+                    {signals}
+                  </p>
+                )}
+                <p className="fine" style={{ margin: '0.15rem 0 0' }}>
+                  {day.status === 'different'
+                    ? 'Different from the days before it'
+                    : day.status === 'usual'
+                      ? 'Inside their own spread'
+                      : day.status === 'learning'
+                        ? 'Written down, not compared yet'
+                        : 'No steady stretch'}
+                </p>
+                {day.note && <p className="note-quote">“{day.note}”</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {days.length > RECENT_DAYS && (
+        <button className="btn secondary" type="button" onClick={onToggle}>
+          {showEarlier ? 'Show the latest days' : `Show earlier days (${hidden})`}
+        </button>
+      )}
+    </>
   );
 }

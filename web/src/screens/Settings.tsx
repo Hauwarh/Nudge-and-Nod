@@ -131,6 +131,7 @@ export function Settings({
           <label htmlFor="someone">Their name</label>
           <input
             id="someone"
+            type="text"
             value={personName}
             onChange={(e) => setPersonName(e.target.value)}
             required
@@ -168,6 +169,7 @@ export function Settings({
         <label htmlFor="confirm">Type delete to confirm</label>
         <input
           id="confirm"
+          type="text"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           autoCapitalize="none"

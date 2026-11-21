@@ -65,6 +65,7 @@ export function CreateHouse({ onReady, onBack }: { onReady: () => void; onBack: 
           <label htmlFor="house">House name</label>
           <input
             id="house"
+            type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -76,6 +77,7 @@ export function CreateHouse({ onReady, onBack }: { onReady: () => void; onBack: 
           <label htmlFor="carer">Your name</label>
           <input
             id="carer"
+            type="text"
             value={carerName}
             onChange={(e) => setCarerName(e.target.value)}
             required
@@ -85,6 +87,7 @@ export function CreateHouse({ onReady, onBack }: { onReady: () => void; onBack: 
           <label htmlFor="person">Their name</label>
           <input
             id="person"
+            type="text"
             value={personName}
             onChange={(e) => setPersonName(e.target.value)}
             required
@@ -94,6 +97,7 @@ export function CreateHouse({ onReady, onBack }: { onReady: () => void; onBack: 
           <label htmlFor="new-pin">A PIN, 4 to 6 digits</label>
           <input
             id="new-pin"
+            type="text"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             inputMode="numeric"

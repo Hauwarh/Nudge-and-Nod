@@ -78,11 +78,16 @@ function sampleSignals(elapsedMs: number): Signals {
   };
 }
 
+function steadySeconds(elapsedMs: number, startsAtMs: number): number {
+  if (elapsedMs < startsAtMs) return 0;
+  return Math.floor(elapsedMs / 1000) - Math.floor(startsAtMs / 1000) + 1;
+}
+
 function sampleCoverage(elapsedMs: number): Coverage {
   const seconds = Math.floor(elapsedMs / 1000);
-  const pulseValid = Math.max(0, seconds - 12);
-  const breathValid = Math.max(0, seconds - 30);
-  const hrvValid = Math.max(0, seconds - 60);
+  const pulseValid = steadySeconds(elapsedMs, 12_000);
+  const breathValid = steadySeconds(elapsedMs, 30_000);
+  const hrvValid = steadySeconds(elapsedMs, 60_000);
   return {
     elapsedSeconds: seconds,
     pulse: { samples: pulseValid, validSeconds: pulseValid, ageMs: pulseValid > 0 ? 200 : null },
@@ -289,7 +294,10 @@ export function CheckIn({
           stopCamera();
           setError(typeof body.message === 'string' ? body.message : 'The check-in stopped.');
           setPhase('error');
-        } else if (body.type === 'sdk_error' || (body.type === 'error' && body.code === 'presage')) {
+        } else if (
+          body.type === 'sdk_error' ||
+          (body.type === 'error' && body.code === 'presage')
+        ) {
           running.current = false;
           stopCamera();
           setError(
@@ -529,28 +537,30 @@ export function CheckIn({
           tap is the answer.
         </p>
       )}
-      <MoodBoard value={mood} onChange={pickMood} />
-      <div style={{ marginTop: '0.8rem' }}>
-        {noteOpen ? (
-          <div className="field">
-            <label htmlFor="note">A few words, if you want</label>
-            <textarea
-              id="note"
-              value={note}
-              maxLength={280}
-              onChange={(event) => changeNote(event.target.value)}
-              placeholder="Only what you type is kept."
-            />
-            <p className="fine">
-              If speaking is easier, say it to the person with you and let them type. We do not
-              record a voice.
-            </p>
-          </div>
-        ) : (
-          <button className="btn secondary wide" type="button" onClick={() => setNoteOpen(true)}>
-            Add a few words
-          </button>
-        )}
+      <div className="checkin-tail">
+        <MoodBoard value={mood} onChange={pickMood} />
+        <div style={{ marginTop: '0.8rem' }}>
+          {noteOpen ? (
+            <div className="field">
+              <label htmlFor="note">A few words, if you want</label>
+              <textarea
+                id="note"
+                value={note}
+                maxLength={280}
+                onChange={(event) => changeNote(event.target.value)}
+                placeholder="Only what you type is kept."
+              />
+              <p className="fine">
+                If speaking is easier, say it to the person with you and let them type. We do not
+                record a voice.
+              </p>
+            </div>
+          ) : (
+            <button className="btn secondary wide" type="button" onClick={() => setNoteOpen(true)}>
+              Add a few words
+            </button>
+          )}
+        </div>
       </div>
       <div className="checkin-bar">
         <p className={`rec${mode === 'sample' ? ' off' : ''}`}>
@@ -574,17 +584,31 @@ export function CheckIn({
 
 function signalPhase(
   present: boolean,
+  validSeconds: number | undefined,
   ageMs: number | null | undefined,
-): 'warming' | 'live' | 'stale' {
+): 'warming' | 'live' | 'stale' | 'settling' {
   if (!present) return 'warming';
   if (ageMs != null && ageMs > 3000) return 'stale';
+  if (validSeconds === 0) return 'settling';
   return 'live';
 }
 
 function SignalGrid({ signals }: { signals: Signals }) {
-  const pulsePhase = signalPhase(Boolean(signals.pulse), signals.coverage?.pulse.ageMs);
-  const breathPhase = signalPhase(Boolean(signals.breathing), signals.coverage?.breathing.ageMs);
-  const hrvPhase = signalPhase(Boolean(signals.hrv), signals.coverage?.hrv.ageMs);
+  const pulsePhase = signalPhase(
+    Boolean(signals.pulse),
+    signals.coverage?.pulse.validSeconds,
+    signals.coverage?.pulse.ageMs,
+  );
+  const breathPhase = signalPhase(
+    Boolean(signals.breathing),
+    signals.coverage?.breathing.validSeconds,
+    signals.coverage?.breathing.ageMs,
+  );
+  const hrvPhase = signalPhase(
+    Boolean(signals.hrv),
+    signals.coverage?.hrv.validSeconds,
+    signals.coverage?.hrv.ageMs,
+  );
   return (
     <div className="signals">
       <SignalTile
@@ -657,13 +681,20 @@ function SignalTile({
   span,
 }: {
   name: string;
-  phase: 'warming' | 'live' | 'stale';
+  phase: 'warming' | 'live' | 'stale' | 'settling';
   value: string;
   unit: string;
   state: string;
   span?: boolean;
 }) {
-  const label = phase === 'warming' ? 'Warming up' : phase === 'stale' ? 'Stale' : 'Live';
+  const label =
+    phase === 'warming'
+      ? 'Warming up'
+      : phase === 'stale'
+        ? 'Stale'
+        : phase === 'settling'
+          ? 'Settling'
+          : 'Live';
   return (
     <div className={`signal${span ? ' span' : ''}`}>
       <span className="name">

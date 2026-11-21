@@ -87,6 +87,7 @@ export function Consent({
         <label htmlFor="who-name">Name of the person agreeing</label>
         <input
           id="who-name"
+          type="text"
           value={consenterName}
           onChange={(event) => setConsenterName(event.target.value)}
           autoComplete="name"

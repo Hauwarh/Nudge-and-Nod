@@ -262,8 +262,14 @@ label {
 .field {
   margin: 0.85rem 0;
 }
-input[type='text'],
-input[type='password'],
+:is(
+  input:not([type]),
+  input[type='text'],
+  input[type='password'],
+  input[type='tel'],
+  input[type='search'],
+  input[type='email']
+),
 textarea {
   width: 100%;
   min-height: 3.4rem;
@@ -462,6 +468,9 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.checkin-tail {
+  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+}
 .checkin-bar {
   position: sticky;
   bottom: 0;

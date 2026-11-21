@@ -22,12 +22,14 @@ const JUNE_DAYS: DaySeed[] = [
   { ago: 3, pulse: 96, breathing: 22, mood: 'uneasy', note: 'Woke a lot in the night.' },
   { ago: 2, pulse: 73, breathing: 15, mood: 'tired', note: 'Better today.' },
   { ago: 1, pulse: 71, breathing: 14, mood: 'steady', note: null },
+  { ago: 0, pulse: 70, breathing: 14, mood: 'sunny', note: 'Sitting by the window.' },
 ];
 
 const ARTHUR_DAYS: DaySeed[] = [
   { ago: 6, pulse: 64, breathing: 16, mood: 'steady', note: 'Quiet morning.' },
   { ago: 4, pulse: 66, breathing: 15, mood: 'sunny', note: null },
   { ago: 2, pulse: 65, breathing: 16, mood: 'tired', note: 'Long nap.' },
+  { ago: 0, pulse: 66, breathing: 15, mood: 'steady', note: null },
 ];
 
 /**
@@ -72,10 +74,9 @@ function writeSampleDays(store: Store, householdId: string): void {
 }
 
 function daysAgoIso(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  date.setHours(9, 30, 0, 0);
-  return date.toISOString();
+  // Anchored to this instant, so "today" is today in the viewer's timezone
+  // and each earlier sitting is one day further back. Not a fixed calendar date.
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function writeDay(store: Store, householdId: string, memberId: string, day: DaySeed): void {
