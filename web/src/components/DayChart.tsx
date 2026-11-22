@@ -39,16 +39,31 @@ export function DayChart({ days, band }: { days: StoryDay[]; band: Band | null }
         aria-label="Pulse across recent check-ins"
       >
         {fill && (
-          <rect x={padL} y={fill.y} width={width - padL - padR} height={fill.h} fill="#dceadf" />
+          <rect
+            x={padL}
+            y={fill.y}
+            width={width - padL - padR}
+            height={fill.h}
+            fill="var(--moss-soft)"
+            rx="6"
+          />
         )}
-        <line x1={padL} y1={height - padB} x2={width - padR} y2={height - padB} stroke="#cbbba6" />
+        <line
+          x1={padL}
+          y1={height - padB}
+          x2={width - padR}
+          y2={height - padB}
+          stroke="var(--line)"
+        />
         {points.map((day, index) => {
           const pulse = day.pulse as number;
           const color =
-            day.status === 'different' || day.pulseState === 'outside' ? '#8E3018' : '#145C38';
+            day.status === 'different' || day.pulseState === 'outside'
+              ? 'var(--clay)'
+              : 'var(--moss)';
           return (
             <g key={day.id}>
-              <circle cx={x(index)} cy={y(pulse)} r="5" fill={color} />
+              <circle cx={x(index)} cy={y(pulse)} r="6" fill={color} />
               <text x={x(index)} y={height - 8} textAnchor="middle">
                 {new Date(day.at).getDate()}
               </text>
@@ -63,11 +78,7 @@ export function DayChart({ days, band }: { days: StoryDay[]; band: Band | null }
         </text>
       </svg>
       <p className="fine">
-        Dots are pulse, in beats per minute. Numbers under them are the day of the month.
-        {band
-          ? ' The green band is the middle half of the check-ins behind the latest one. A clay dot fell outside that person’s own spread.'
-          : ' There is no band yet. There are not enough earlier days to compare.'}{' '}
-        None of this is a medical line.
+        Pulse per day. The green band is their usual middle. Clay dots fell outside it.
       </p>
     </div>
   );

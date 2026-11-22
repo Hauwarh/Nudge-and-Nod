@@ -97,6 +97,9 @@ export function App() {
     const path = pathFor(next);
     history.pushState(null, '', path);
     setRoute(next);
+    // A new screen starts at the top. Without this the check-in opened
+    // scrolled past the camera, wherever the consent page had been left.
+    window.scrollTo(0, 0);
   }
 
   if (booting) {

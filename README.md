@@ -31,11 +31,11 @@ Taken in a phone-sized browser. Replace them with a recording from the Android p
 
 The sample house is already full of made-up days, so you can look around with no camera and no API key.
 
-| | |
-| --- | --- |
-| House word | `maple` |
-| PIN | `2468` |
-| People | June and Arthur are checked in. Sam holds the key with them. |
+|            |                                                              |
+| ---------- | ------------------------------------------------------------ |
+| House word | `maple`                                                      |
+| PIN        | `2468`                                                       |
+| People     | June and Arthur are checked in. Sam holds the key with them. |
 
 June’s latest sitting looks like her own recent days. One earlier day (a high pulse, faster breathing, the picture “Unsettled”) is marked different. Arthur does not have five steady sittings yet, so his page says we are still learning his days.
 
@@ -279,7 +279,6 @@ Not tested here:
 ## Credits
 
 - The custom-input calls follow the [SmartSpectra Node.js documentation](https://smartspectra.presagetech.com/docs/nodejs): `useCustomInput`, `sendFrame`, and `decodeMetrics` from `@smartspectra/node-sdk/messages`. The Electron quickstart is the desktop reference for the same SDK. Its UI was not copied.
-- [Fraunces](https://github.com/undercasetype/fraunces) by Undercase Type, SIL Open Font License, self-hosted through Fontsource.
-- [Atkinson Hyperlegible](https://brailleinstitute.org/freefont) by the Braille Institute, SIL Open Font License, self-hosted through Fontsource.
+- [Lexend](https://www.lexend.com/) by Bonnie Shaver-Troup and Thomas Jockin, SIL Open Font License, self-hosted through Fontsource. Chosen because it was designed to reduce visual stress and improve reading for people who find reading hard.
 
 MIT licensed. See [LICENSE](LICENSE).

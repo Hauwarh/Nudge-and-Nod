@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
 import { dayLabel, whole } from '../format';
 import type { Summary } from '../types';
-import { Disclaimer, Shell, Wordmark } from '../components/ui';
+import { Shell, Wordmark } from '../components/ui';
+import { PebbleStrip } from '../components/PebbleStrip';
 
 export function SummaryScreen({ memberId, onBack }: { memberId: string; onBack: () => void }) {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -69,6 +70,11 @@ export function SummaryScreen({ memberId, onBack }: { memberId: string; onBack: 
             {summary.householdName}
             {from && to ? ` · ${from} to ${to}` : ''}
           </p>
+          {summary.days.length > 0 && (
+            <div className="strip-scroll">
+              <PebbleStrip days={summary.days} size={34} />
+            </div>
+          )}
           <p className="narrative">{summary.narrative}</p>
           {summary.days.length > 0 && (
             <>
@@ -95,7 +101,6 @@ export function SummaryScreen({ memberId, onBack }: { memberId: string; onBack: 
               </table>
             </>
           )}
-          <Disclaimer text={summary.disclaimer} />
           <div className="stack noprint" style={{ marginTop: '1rem' }}>
             <button className="btn wide" type="button" onClick={() => window.print()}>
               Print or save as PDF

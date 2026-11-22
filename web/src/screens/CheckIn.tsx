@@ -3,8 +3,9 @@ import { api } from '../api';
 import { type MoodId } from '../copy';
 import { clock, whole } from '../format';
 import type { HrvMeasure, Measure, Verdict } from '../types';
-import { MoodBoard } from '../components/MoodBoard';
-import { Disclaimer, Shell, VerdictLabel } from '../components/ui';
+import { MoodArt, MoodBoard } from '../components/MoodBoard';
+import { Orb } from '../components/Orb';
+import { Disclaimer, Pebble, RangeBar, STATUS_TITLE, Shell } from '../components/ui';
 
 interface FaceGlance {
   words: string;
@@ -41,21 +42,22 @@ const EMPTY: Signals = {
   validation: { code: 0, hint: '' },
 };
 
+const MINUTE = 60_000;
+
 function guide(elapsedMs: number, talking: boolean): string {
-  if (talking) return 'If you can, pause speaking. It muddles the breathing.';
-  if (elapsedMs < 8000) return 'Let the phone see your face and the top of your chest.';
-  if (elapsedMs < 16000) return 'Still and quiet is enough. Pulse usually appears around now.';
-  if (elapsedMs < 30000) return 'Breathing takes a little longer. You are doing fine.';
-  if (elapsedMs < 55000)
-    return 'When you are ready, tap the picture that fits. Or stay for the minute.';
-  return 'Beat-to-beat variation usually needs about a minute. You can stop whenever you like.';
+  if (talking) return 'A little quieter, if you can.';
+  if (elapsedMs < 8000) return 'Find your face in the circle.';
+  if (elapsedMs < 18000) return 'Sit still. Listening for your pulse.';
+  if (elapsedMs < 34000) return 'Breathe slowly, with the glow.';
+  if (elapsedMs < MINUTE) return 'Tap the picture that fits today.';
+  return 'That’s plenty. Tap Done when you’re ready.';
 }
 
 function visibleHint(signals: Signals, elapsedMs: number): string {
   if (signals.validation.code !== 0 && signals.validation.hint.trim())
     return signals.validation.hint.trim();
-  if (!signals.pulse) {
-    return 'Looking for a face. Come closer, with the light on your face, and hold still.';
+  if (!signals.pulse && elapsedMs > 8000) {
+    return 'Come a little closer, with light on your face, and hold still.';
   }
   return guide(elapsedMs, signals.talking);
 }
@@ -64,18 +66,18 @@ function sampleSignals(elapsedMs: number): Signals {
   const wobble = Math.sin(elapsedMs / 900);
   return {
     pulse:
-      elapsedMs >= 12000
+      elapsedMs >= 8000
         ? { value: Math.round((72 + wobble * 1.2) * 10) / 10, confidence: 64, stable: true }
         : null,
-    breathing: elapsedMs >= 30000 ? { value: 14, confidence: 58, stable: true } : null,
+    breathing: elapsedMs >= 16000 ? { value: 14, confidence: 58, stable: true } : null,
     hrv:
       elapsedMs >= 60000
         ? { rmssd: 34, sdnn: 42, meanNn: 830, confidence: 55, stable: true }
         : null,
     expression: elapsedMs > 8000 ? { words: 'a quiet face', confidence: 50 } : null,
     talking: false,
-    pulseTrace: elapsedMs >= 12000 ? Math.sin(elapsedMs / 140) : null,
-    breathTrace: elapsedMs >= 30000 ? Math.sin((elapsedMs / 4300) * Math.PI * 2) : null,
+    pulseTrace: elapsedMs >= 8000 ? Math.sin(elapsedMs / 140) : null,
+    breathTrace: elapsedMs >= 16000 ? Math.sin((elapsedMs / 4300) * Math.PI * 2) : null,
     validation: { code: 0, hint: '' },
     coverage: sampleCoverage(elapsedMs),
   };
@@ -88,8 +90,8 @@ function steadySeconds(elapsedMs: number, startsAtMs: number): number {
 
 function sampleCoverage(elapsedMs: number): Coverage {
   const seconds = Math.floor(elapsedMs / 1000);
-  const pulseValid = steadySeconds(elapsedMs, 12_000);
-  const breathValid = steadySeconds(elapsedMs, 30_000);
+  const pulseValid = steadySeconds(elapsedMs, 8_000);
+  const breathValid = steadySeconds(elapsedMs, 16_000);
   const hrvValid = steadySeconds(elapsedMs, 60_000);
   return {
     elapsedSeconds: seconds,
@@ -101,11 +103,6 @@ function sampleCoverage(elapsedMs: number): Coverage {
     },
     hrv: { samples: hrvValid, validSeconds: hrvValid, ageMs: hrvValid > 0 ? 200 : null },
   };
-}
-
-function quality(kind: 'pulse' | 'breathing' | 'hrv', confidence: number): string {
-  const mark = kind === 'pulse' ? 40 : kind === 'breathing' ? 45 : 50;
-  return confidence >= mark ? 'Steady enough to keep' : 'Still unsteady';
 }
 
 export function CheckIn({
@@ -135,8 +132,8 @@ export function CheckIn({
   const [phase, setPhase] = useState<'run' | 'result' | 'error'>('run');
   const [error, setError] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [breathSpread, setBreathSpread] = useState<number | null>(null);
+  const [, setSaved] = useState(false);
+  const [breath, setBreath] = useState<number | null>(null);
   const traceSpan = useRef({ min: 0, max: 0, seen: false });
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -165,7 +162,7 @@ export function CheckIn({
         const next = sampleSignals(ms);
         setSignals(next);
         if (next.breathing && next.breathing.confidence > 0) applyTrace(next.breathTrace);
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 120));
       }
     }
 
@@ -182,7 +179,7 @@ export function CheckIn({
       }
       const range = span.max - span.min;
       const amount = range < 1e-4 ? 0.5 : (value - span.min) / range;
-      setBreathSpread(6 + amount * 12);
+      setBreath(amount);
     }
 
     async function runLive() {
@@ -434,18 +431,19 @@ export function CheckIn({
   }
 
   const hint = visibleHint(signals, elapsed);
-  const breathingLive = Boolean(signals.breathing && signals.breathing.confidence >= 45);
-  const breathMs = breathingLive
-    ? `${Math.round(60000 / (signals.breathing?.value || 14))}ms`
-    : '4.3s';
-  const traced = breathingLive && breathSpread !== null;
+  const pulseSteady = Boolean(signals.pulse && signals.pulse.confidence >= 40);
+  const breathSteady = Boolean(signals.breathing && signals.breathing.confidence >= 45);
+  const sample = mode === 'sample';
 
   if (phase === 'error') {
     return (
       <Shell title="Check-in stopped">
-        <p className="kicker">Camera off</p>
-        <h1>The check-in stopped</h1>
-        <p className="lede">{error}</p>
+        <div className="done-hero">
+          <Pebble status="quiet" size={88} />
+          <p className="kicker">Camera off</p>
+          <h1>The check-in stopped</h1>
+          <p className="lede">{error}</p>
+        </div>
         <button className="btn wide" type="button" onClick={onLeave}>
           Back to the house
         </button>
@@ -455,46 +453,66 @@ export function CheckIn({
   }
 
   if (phase === 'result') {
+    const status = verdict?.status ?? (sample ? 'sample' : 'quiet');
     return (
       <Shell title="Check-in done">
-        <p className="kicker">{mode === 'sample' ? 'Sample' : 'Kept'}</p>
-        <h1>{mode === 'sample' ? 'That was a sample' : 'That’s the check-in'}</h1>
-        {mode === 'sample' ? (
-          <p className="lede">
-            Nothing was written down. The camera stayed off. The numbers were made up, on purpose,
-            so you could see the shape of a sit.
-          </p>
-        ) : (
-          <p className="lede">
-            {saved
-              ? 'The camera is off. What was steady enough is kept with the day.'
-              : 'The camera is off.'}
-          </p>
+        <div className="done-hero">
+          <Pebble status={status} size={132}>
+            {mood && <MoodArt id={mood} className="pebble-art" />}
+          </Pebble>
+          <p className="kicker">{sample ? 'Sample · nothing saved' : 'Saved · camera off'}</p>
+          <h1>{sample ? 'That was a sample' : `Thank you, ${name}`}</h1>
+          <p className="lede">{resultLine(status, name, sample)}</p>
+        </div>
+        {verdict && status !== 'sample' && (
+          <section className="card">
+            <h2 className="card-title">{STATUS_TITLE[status]}</h2>
+            <RangeBar
+              label="Pulse"
+              unit="/min"
+              value={verdict.pulseValue}
+              band={verdict.pulseBand}
+            />
+            <RangeBar
+              label="Breathing"
+              unit="/min"
+              value={verdict.breathingValue}
+              band={verdict.breathingBand}
+            />
+          </section>
         )}
-        {verdict && (
-          <article className={`card ${verdict.status}`}>
-            <VerdictLabel status={verdict.status} headline={verdict.headline} />
-            <p>{verdict.explanation}</p>
-          </article>
+        {sample && (
+          <div className="readouts day">
+            <Readout label="Pulse" value={signals.pulse ? whole(signals.pulse.value) : null} />
+            <Readout
+              label="Breathing"
+              value={signals.breathing ? whole(signals.breathing.value) : null}
+            />
+          </div>
         )}
-        <SignalGrid signals={signals} />
-        <CoverageLine coverage={signals.coverage} />
-        {signals.hrv && (
-          <p className="fine">
-            Also observed, and not used for usual or different: RMSSD {whole(signals.hrv.rmssd)} ms
-            {signals.hrv.sdnn !== null ? `, SDNN ${whole(signals.hrv.sdnn)} ms` : ''}. This is not a
-            wellbeing score.
-          </p>
-        )}
-        {mood && <p>Picture tapped: {moodLabel(mood)}.</p>}
         {note && <p className="note-quote">“{note}”</p>}
+        <details className="card fold">
+          <summary>Measurement details</summary>
+          {verdict?.explanation && <p>{verdict.explanation}</p>}
+          <CoverageLine coverage={signals.coverage} />
+          {signals.hrv && (
+            <p className="fine">
+              Beat-to-beat (not used for usual or different): RMSSD {whole(signals.hrv.rmssd)} ms
+              {signals.hrv.sdnn !== null ? `, SDNN ${whole(signals.hrv.sdnn)} ms` : ''}.
+            </p>
+          )}
+        </details>
         <div className="stack">
-          {mode === 'live' && (
+          {!sample && (
             <button className="btn wide" type="button" onClick={onStory}>
-              See the days
+              See {name}’s days
             </button>
           )}
-          <button className="btn secondary wide" type="button" onClick={onLeave}>
+          <button
+            className={`btn wide${sample ? '' : ' secondary'}`}
+            type="button"
+            onClick={onLeave}
+          >
             Back to the house
           </button>
         </div>
@@ -504,52 +522,44 @@ export function CheckIn({
   }
 
   return (
-    <Shell title={mode === 'sample' ? 'Sample check-in' : 'Check-in'}>
-      <div className="topbar">
-        <p className="kicker" style={{ margin: 0 }}>
-          {name}
-        </p>
-        <p className="wordmark" style={{ fontSize: '1.6rem' }}>
+    <Shell title={sample ? 'Sample check-in' : 'Check-in'} tone="night">
+      <div className="checkin-top">
+        <span className={`badge${sample ? ' sample' : ' live'}`}>
+          {sample ? 'Sample · made-up numbers' : 'Live · Presage'}
+        </span>
+        <span className="clock" aria-label="Time so far">
           {clock(elapsed)}
-        </p>
+        </span>
       </div>
-      <h1 style={{ fontSize: '2rem' }}>How are you today?</h1>
-      <div className="preview-wrap">
-        <div
-          className={`preview-frame${breathingLive ? ' paced' : ''}${traced ? ' traced' : ''}`}
-          style={{
-            ['--breath-ms' as string]: breathMs,
-            boxShadow: traced ? `0 0 0 ${breathSpread}px rgba(20, 92, 56, 0.28)` : undefined,
-          }}
-        >
-          {mode === 'live' ? (
-            <video ref={videoRef} playsInline muted autoPlay aria-label="Live camera preview" />
-          ) : (
-            <div
-              className="sample-stage"
-              role="img"
-              aria-label="Sample picture. The camera is off."
-            />
-          )}
-          <span className={mode === 'live' ? 'live-ribbon' : 'sample-ribbon'}>
-            {mode === 'live' ? 'Live Presage' : 'Sample'}
-          </span>
-        </div>
-      </div>
-      <p className="status-banner" role="status">
+      <Orb
+        mode={mode}
+        videoRef={videoRef}
+        breath={breathSteady ? breath : null}
+        breathRate={breathSteady ? (signals.breathing?.value ?? null) : null}
+        pulseRate={pulseSteady ? (signals.pulse?.value ?? null) : null}
+        progress={elapsed / MINUTE}
+      />
+      <p className="hint" role="status" aria-live="polite">
         {hint}
       </p>
-      <SignalGrid signals={signals} />
-      <CoverageLine coverage={signals.coverage} />
-      {signals.expression && (
-        <p className="fine">
-          What the camera saw: {signals.expression.words}. A face is not a feeling. The picture you
-          tap is the answer.
-        </p>
-      )}
-      <div className="checkin-tail">
+      <div className="readouts">
+        <Readout
+          label="Pulse"
+          value={pulseSteady && signals.pulse ? whole(signals.pulse.value) : null}
+          waiting="finding"
+        />
+        <Readout
+          label="Breathing"
+          value={breathSteady && signals.breathing ? whole(signals.breathing.value) : null}
+          waiting="finding"
+        />
+      </div>
+      <section className="checkin-tail" aria-labelledby="ask">
+        <h1 id="ask" className="ask">
+          How are you today{name && name !== 'Check-in' ? `, ${name}` : ''}?
+        </h1>
         <MoodBoard value={mood} onChange={pickMood} />
-        <div style={{ marginTop: '0.8rem' }}>
+        <div className="note-area">
           {noteOpen ? (
             <div className="field">
               <label htmlFor="note">A few words, if you want</label>
@@ -560,113 +570,67 @@ export function CheckIn({
                 onChange={(event) => changeNote(event.target.value)}
                 placeholder="Only what you type is kept."
               />
-              <p className="fine">
-                If speaking is easier, say it to the person with you and let them type. We do not
-                record a voice.
-              </p>
             </div>
           ) : (
-            <button className="btn secondary wide" type="button" onClick={() => setNoteOpen(true)}>
+            <button className="btn ghost wide" type="button" onClick={() => setNoteOpen(true)}>
               Add a few words
             </button>
           )}
         </div>
-        {mode === 'live' && (
-          <p>
-            <button className="btn quiet" type="button" onClick={withdraw}>
-              Withdraw agreement and stop
-            </button>
-          </p>
+        {!sample && (
+          <button className="btn quiet" type="button" onClick={withdraw}>
+            Stop and withdraw agreement
+          </button>
         )}
-      </div>
+      </section>
       <div className="checkin-bar">
-        <p className={`rec${mode === 'sample' ? ' off' : ''}`}>
+        <p className={`rec${sample ? ' off' : ''}`}>
           <i aria-hidden="true" />
-          {mode === 'live' ? 'Camera is on' : 'Camera is off'}
+          {sample ? 'Camera off' : 'Camera on'}
         </p>
-        <button className="btn clay" type="button" onClick={finish}>
-          {mode === 'live' ? 'Stop' : 'End sample'}
+        <button className="btn apricot" type="button" onClick={finish}>
+          {mood ? 'Done' : sample ? 'End sample' : 'Stop'}
         </button>
       </div>
     </Shell>
   );
 }
 
-function signalPhase(
-  present: boolean,
-  validSeconds: number | undefined,
-  ageMs: number | null | undefined,
-): 'warming' | 'live' | 'stale' | 'settling' {
-  if (!present) return 'warming';
-  if (ageMs != null && ageMs > 3000) return 'stale';
-  if (validSeconds === 0) return 'settling';
-  return 'live';
+function resultLine(status: string, name: string, sample: boolean): string {
+  if (sample)
+    return 'The camera stayed off and nothing was written down. The numbers were made up so you can see how a check-in feels.';
+  if (status === 'usual') return `Pulse and breathing sat inside ${name}’s own usual range.`;
+  if (status === 'different')
+    return `Something sat outside ${name}’s own usual range today. It is one day. Read it alongside what you know about them.`;
+  if (status === 'learning') return 'Written down. After five steady days we can start comparing.';
+  return 'Not enough steady seconds to compare this time. That is fine. The picture still counts.';
 }
 
-function SignalGrid({ signals }: { signals: Signals }) {
-  const pulsePhase = signalPhase(
-    Boolean(signals.pulse),
-    signals.coverage?.pulse.validSeconds,
-    signals.coverage?.pulse.ageMs,
-  );
-  const breathPhase = signalPhase(
-    Boolean(signals.breathing),
-    signals.coverage?.breathing.validSeconds,
-    signals.coverage?.breathing.ageMs,
-  );
-  const hrvPhase = signalPhase(
-    Boolean(signals.hrv),
-    signals.coverage?.hrv.validSeconds,
-    signals.coverage?.hrv.ageMs,
-  );
+function Readout({
+  label,
+  value,
+  waiting = 'waiting',
+}: {
+  label: string;
+  value: string | null;
+  waiting?: string;
+}) {
   return (
-    <div className="signals">
-      <SignalTile
-        name="Pulse"
-        phase={pulsePhase}
-        value={signals.pulse ? whole(signals.pulse.value) : '—'}
-        unit={
-          signals.pulse
-            ? `beats / min · confidence ${Math.round(signals.pulse.confidence)}`
-            : 'warm-up about 12 seconds'
-        }
-        state={
-          pulsePhase === 'stale'
-            ? `Last sample ${Math.round((signals.coverage?.pulse.ageMs ?? 0) / 1000)}s ago`
-            : signals.pulse
-              ? quality('pulse', signals.pulse.confidence)
-              : 'No number yet'
-        }
-      />
-      <SignalTile
-        name="Breathing"
-        phase={breathPhase}
-        value={signals.breathing ? whole(signals.breathing.value) : '—'}
-        unit={
-          signals.breathing
-            ? `breaths / min · confidence ${Math.round(signals.breathing.confidence)}`
-            : 'warm-up about half a minute'
-        }
-        state={
-          breathPhase === 'stale'
-            ? `Last sample ${Math.round((signals.coverage?.breathing.ageMs ?? 0) / 1000)}s ago`
-            : signals.breathing
-              ? quality('breathing', signals.breathing.confidence)
-              : 'No number yet'
-        }
-      />
-      <SignalTile
-        name="Beat to beat"
-        phase={hrvPhase}
-        value={signals.hrv ? whole(signals.hrv.rmssd) : '—'}
-        unit={
-          signals.hrv
-            ? `RMSSD ms${signals.hrv.sdnn !== null ? ` · SDNN ${whole(signals.hrv.sdnn)}` : ''} · not a score`
-            : 'warm-up about a minute'
-        }
-        state={signals.hrv ? quality('hrv', signals.hrv.confidence) : 'No number yet'}
-        span
-      />
+    <div className={`readout${value ? ' on' : ''}`}>
+      <span className="readout-label">{label}</span>
+      {value ? (
+        <strong>
+          {value}
+          <small>/min</small>
+        </strong>
+      ) : (
+        <span className="readout-wait">
+          {waiting}
+          <i />
+          <i />
+          <i />
+        </span>
+      )}
     </div>
   );
 }
@@ -675,53 +639,8 @@ function CoverageLine({ coverage }: { coverage?: Coverage | null }) {
   if (!coverage) return <p className="fine">Valid seconds appear once a signal is steady.</p>;
   return (
     <p className="fine">
-      Valid seconds so far — pulse {coverage.pulse.validSeconds}, breathing{' '}
-      {coverage.breathing.validSeconds}, beat-to-beat {coverage.hrv.validSeconds}. A second counts
-      only when that signal’s confidence is high enough. Missing seconds stay missing.
+      Steady seconds: pulse {coverage.pulse.validSeconds}, breathing{' '}
+      {coverage.breathing.validSeconds}, beat-to-beat {coverage.hrv.validSeconds}.
     </p>
   );
-}
-
-function SignalTile({
-  name,
-  phase,
-  value,
-  unit,
-  state,
-  span,
-}: {
-  name: string;
-  phase: 'warming' | 'live' | 'stale' | 'settling';
-  value: string;
-  unit: string;
-  state: string;
-  span?: boolean;
-}) {
-  const label =
-    phase === 'warming'
-      ? 'Warming up'
-      : phase === 'stale'
-        ? 'Stale'
-        : phase === 'settling'
-          ? 'Settling'
-          : 'Live';
-  return (
-    <div className={`signal${span ? ' span' : ''}`}>
-      <span className="name">
-        {name} · {label}
-      </span>
-      <strong>{phase === 'warming' ? '—' : value}</strong>
-      <span className="state">
-        {unit}. {state}.
-      </span>
-    </div>
-  );
-}
-
-function moodLabel(id: MoodId): string {
-  if (id === 'sunny') return 'Good';
-  if (id === 'steady') return 'Okay';
-  if (id === 'tired') return 'Tired';
-  if (id === 'uneasy') return 'Unsettled';
-  return 'Stay close';
 }
