@@ -20,11 +20,20 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
+# libvulkan1 + mesa-vulkan-drivers give the SDK a CPU Vulkan device (lavapipe).
+# Without it the pulse model (phasic-bp-inference) fails to load and every
+# sitting that finds a face ends with kProcessingFailed (8) about 12 s in.
+# /data is writable by uid 1000, which Hugging Face Spaces uses, and by the
+# node user Render runs when USER is honoured.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends ca-certificates libvulkan1 mesa-vulkan-drivers \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /data \
+  && chmod 777 /data
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app /app
-EXPOSE 10000
+ENV DATA_DIR=/data
+COPY --from=build --chown=1000:1000 /app /app
+USER 1000
+EXPOSE 7860
 CMD ["node", "server/dist/index.js"]

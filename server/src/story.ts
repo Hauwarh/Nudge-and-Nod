@@ -142,7 +142,7 @@ export function buildStory(name: string, rows: readonly StoredCheckin[]): StoryM
     const found = byId.get(row.id);
     return toDay(row, found?.verdict ?? quietFallback());
   });
-  const latestRow = ordered[ordered.length - 1];
+  const latestRow = bestSittingOfLatestDay(ordered, byId);
   const latestAssessed = latestRow ? byId.get(latestRow.id) : undefined;
   return {
     name,
@@ -151,6 +151,54 @@ export function buildStory(name: string, rows: readonly StoredCheckin[]): StoryM
     days,
     disclaimer: NOT_A_MEDICAL_DEVICE,
   };
+}
+
+function sittingRank(status: VerdictStatus): number {
+  if (status === 'usual' || status === 'different') return 3;
+  if (status === 'learning') return 2;
+  return 1;
+}
+
+/** If a later empty sit shares the latest date, keep the stronger sitting of that day. */
+function bestSittingOfLatestDay(
+  ordered: StoredCheckin[],
+  byId: Map<string, Assessed>,
+): StoredCheckin | undefined {
+  const last = ordered[ordered.length - 1];
+  if (!last) return undefined;
+  const day = last.at.slice(0, 10);
+  const sameDay = ordered.filter((row) => row.at.slice(0, 10) === day);
+  let best = sameDay[0] ?? last;
+  let bestScore = -1;
+  for (const row of sameDay) {
+    const verdict = byId.get(row.id)?.verdict;
+    const seconds = (row.pulseValidSeconds ?? 0) + (row.breathingValidSeconds ?? 0);
+    const score = sittingRank(verdict?.status ?? 'quiet') * 1000 + seconds;
+    if (score >= bestScore) {
+      best = row;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+export function shouldKeepCheckin(input: {
+  pulseValidSeconds: number | null;
+  breathingValidSeconds: number | null;
+  mood: string | null;
+  note: string | null;
+}): boolean {
+  if ((input.pulseValidSeconds ?? 0) > 0 || (input.breathingValidSeconds ?? 0) > 0) return true;
+  if (input.mood || input.note) return true;
+  return false;
+}
+
+function friendlyDay(iso: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(iso));
 }
 
 function quietFallback(): Verdict {
@@ -222,7 +270,7 @@ export function buildSummary(input: {
     paragraphs.push(
       notes
         .map((day) => {
-          const when = day.at.slice(0, 10);
+          const when = friendlyDay(day.at);
           return `${when}: ${day.note}`;
         })
         .join('\n'),

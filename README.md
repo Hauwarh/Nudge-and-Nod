@@ -1,3 +1,12 @@
+---
+title: Nudge & Nod
+emoji: 🌿
+colorFrom: yellow
+colorTo: green
+sdk: docker
+app_port: 7860
+---
+
 # Nudge & Nod
 
 A calm daily check-in for someone who may not easily say how they feel, and a plain record for the family who looks after them.
@@ -167,6 +176,16 @@ A non-Docker fallback, if you would rather use Render’s Node runtime (the host
 - **Possibly run out of memory** once the native models are in use. Loading the library alone was about 110MB of resident memory in development. A real measurement loads more. If a live check-in dies as soon as it starts and the Render log shows the process exiting, move the service to an instance with more than 512MB of RAM.
 
 Do not turn on more than one instance. The SDK session and the SQLite file are both local to the one process.
+
+## Deploy on Hugging Face Spaces
+
+The same Docker image runs on a free Hugging Face Space (2 vCPU, 16 GB). The app listens on the `PORT` environment variable. Spaces sets that to **7860**, and the README front matter tells the Space proxy to use that port. Render sets its own `PORT`; both hosts work without a code change.
+
+1. Create a new Space. Choose **Docker** as the SDK. You can point it at this repository.
+2. In Space settings, add a secret named `SMARTSPECTRA_API_KEY`. Do not put the key in the Dockerfile or the README.
+3. Leave `SMARTSPECTRA_TELEMETRY` unset or `false`.
+4. The container runs as uid 1000. Check-ins are stored in `/data`, which is writable by that user. A free Space disk is ephemeral, same as Render’s free disk: a restart can forget the days. The sample house is recreated if it is missing.
+5. Open the Space URL over HTTPS and allow the camera only when a check-in starts.
 
 ## For judges
 

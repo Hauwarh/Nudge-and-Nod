@@ -9,7 +9,7 @@ import { parseFrame } from './frames.js';
 import { guardedOpen, SdkStartupError, type SdkHost } from './sdk-host.js';
 import { logger } from './logger.js';
 import { releaseSdk } from './sdk.js';
-import { buildStory } from './story.js';
+import { buildStory, shouldKeepCheckin } from './story.js';
 import type { Store } from './store.js';
 
 const CONSENT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
@@ -79,6 +79,7 @@ function handleConnection(
     return;
   }
 
+  logger.info({ householdId: household.id }, 'check-in socket opened');
   let helloSeen = false;
   let checkinId: string | null = null;
   let consentId: string | null = null;
@@ -91,6 +92,7 @@ function handleConnection(
   let framesThisSecond = 0;
   let secondStarted = Date.now();
   let dropped = 0;
+  let forwardedTotal = 0;
   const startedAtMs = Date.now();
   let capTimer: NodeJS.Timeout | null = null;
 
@@ -115,6 +117,30 @@ function handleConnection(
         const covered = sessionLive.keptCoverage();
         const endedAt = new Date();
         if (reason === 'withdraw' && consentId) store.withdrawConsent(household!.id, consentId);
+        const keep = shouldKeepCheckin({
+          pulseValidSeconds: covered.pulse.validSeconds,
+          breathingValidSeconds: covered.breathing.validSeconds,
+          mood,
+          note,
+        });
+        if (!keep) {
+          store.deleteCheckin(id, household!.id);
+          send(socket, {
+            type: 'result',
+            checkinId: id,
+            mood,
+            note,
+            pulse: null,
+            breathing: null,
+            hrv: null,
+            expression: null,
+            endedReason: reason,
+            verdict: null,
+            kept: false,
+            disclaimer: NOT_A_MEDICAL_DEVICE,
+          });
+          return;
+        }
         store.finishCheckin(id, household!.id, {
           endedAt: endedAt.toISOString(),
           durationMs: endedAt.getTime() - startedAtMs,
@@ -228,6 +254,7 @@ function handleConnection(
       return;
     }
     checkinId = id;
+    logger.info({ checkinId: id }, 'live session started');
 
     try {
       store.beginCheckin({
@@ -291,6 +318,7 @@ function handleConnection(
         return;
       }
       framesThisSecond += 1;
+      forwardedTotal += 1;
       const result = live.pushJpeg(frame.jpeg, frame.timestampUs);
       if (!result.ok && result.reason !== 'timestamp') dropped += 1;
       return;
@@ -348,7 +376,8 @@ function handleConnection(
     }
   });
 
-  socket.on('close', () => {
+  socket.on('close', (code) => {
+    logger.info({ checkinId, code, framesForwarded: forwardedTotal }, 'check-in socket closed');
     void finalize('drop');
   });
 

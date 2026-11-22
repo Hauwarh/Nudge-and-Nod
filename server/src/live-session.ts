@@ -38,6 +38,8 @@ export class LiveSession {
   private sdk: SdkInstance | null = null;
   private loaded: LoadedSdk | null = null;
   private closed = false;
+  private framesFailed = false;
+  private framesSent = 0;
   private lastTs = -1;
   private validationOk = 0;
   private validationTotal = 0;
@@ -105,11 +107,13 @@ export class LiveSession {
       const changed = next.code !== this.validation.code;
       this.validation = next;
       if (changed) {
+        logger.info({ code: next.code, hint: next.hint }, 'validation status');
         this.emit({ type: 'validation', ...next });
         this.emitSignals(true);
       }
     });
     sdk.on('processingStatus', (status: number) => {
+      logger.info({ status }, 'processing status');
       this.emit({ type: 'processing', status });
     });
     sdk.on('error', (code: number, message: string, retryable: boolean) => {
@@ -236,10 +240,10 @@ export class LiveSession {
     };
   }
 
-  pushJpeg(jpegBytes: Buffer, timestampUs: number): { ok: boolean; reason: string } {
+  async pushJpeg(jpegBytes: Buffer, timestampUs: number): Promise<{ ok: boolean; reason: string }> {
     if (this.closed || !this.sdk || !this.loaded) return { ok: false, reason: 'closed' };
     if (!acceptTimestamp(this.lastTs, timestampUs)) return { ok: false, reason: 'timestamp' };
-    const frame = jpegToRgb(jpegBytes);
+    const frame = await jpegToRgb(jpegBytes);
     if (!frame) return { ok: false, reason: 'decode' };
     this.lastTs = timestampUs;
     // Packed RGB, not RGBA. Stride is width * 3. timestampUs is monotonic
@@ -248,14 +252,48 @@ export class LiveSession {
     // increasing, not wall-clock. A 640x480 frame is stride 1920.
     if (frame.rgb.length !== frame.width * frame.height * 3) return { ok: false, reason: 'decode' };
     const stride = frame.width * 3;
-    const sent = this.sdk.sendFrame(
-      frame.rgb,
-      frame.width,
-      frame.height,
-      stride,
-      this.loaded.PixelFormat.kRGB,
-      timestampUs,
-    );
+    let sent: boolean;
+    try {
+      sent = this.sdk.sendFrame(
+        frame.rgb,
+        frame.width,
+        frame.height,
+        stride,
+        this.loaded.PixelFormat.kRGB,
+        timestampUs,
+      );
+    } catch (err) {
+      // After a terminal SDK error (kProcessingFailed, kSustainedLowFrameRate)
+      // sendFrame throws "not in a valid state". The 'error' event has already
+      // told the phone. Stop feeding instead of crashing the child.
+      if (!this.framesFailed) {
+        this.framesFailed = true;
+        logger.warn(
+          { err: err instanceof Error ? err.message : String(err), framesSent: this.framesSent },
+          'sendFrame refused, no more frames this sitting',
+        );
+      }
+      return { ok: false, reason: 'rejected' };
+    }
+    if (sent) {
+      this.framesSent += 1;
+      if (this.framesSent === 1) {
+        logger.info({ width: frame.width, height: frame.height }, 'first frame reached the sdk');
+      }
+      if (this.framesSent % 300 === 0) {
+        const seconds = (Date.now() - this.startedAt) / 1000;
+        logger.info(
+          {
+            framesSent: this.framesSent,
+            fps: Number((this.framesSent / seconds).toFixed(1)),
+            validation: this.validation.code,
+            pulse: this.snapshot.pulse?.value ?? null,
+            breathing: this.snapshot.breathing?.value ?? null,
+          },
+          'live session progress',
+        );
+      }
+    }
     return sent ? { ok: true, reason: 'sent' } : { ok: false, reason: 'rejected' };
   }
 
