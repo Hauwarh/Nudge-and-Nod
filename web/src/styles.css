@@ -725,20 +725,8 @@ textarea {
   border-radius: var(--radius);
   padding: 1rem 1.1rem 0.6rem;
   margin: 0.4rem 0 1rem;
-  --edge: var(--moss);
-  box-shadow:
-    inset 0 6px 0 var(--edge),
-    0 10px 28px -18px rgba(22, 36, 27, 0.35);
+  box-shadow: 0 10px 28px -18px rgba(22, 36, 27, 0.35);
   animation: rise 0.3s ease;
-}
-.day-card.different {
-  --edge: var(--apricot);
-}
-.day-card.learning {
-  --edge: var(--learn);
-}
-.day-card.quiet {
-  --edge: #b6c0b5;
 }
 .day-card-head {
   display: flex;
