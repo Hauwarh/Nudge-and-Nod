@@ -132,6 +132,9 @@ export function CheckIn({
   const [phase, setPhase] = useState<'run' | 'result' | 'error'>('run');
   const [error, setError] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [resultPulse, setResultPulse] = useState<number | null>(null);
+  const [resultBreathing, setResultBreathing] = useState<number | null>(null);
+  const [settled, setSettled] = useState(false);
   const [, setSaved] = useState(false);
   const [breath, setBreath] = useState<number | null>(null);
   const traceSpan = useRef({ min: 0, max: 0, seen: false });
@@ -201,14 +204,14 @@ export function CheckIn({
             facingMode: 'user',
             width: { ideal: 1280 },
             height: { ideal: 720 },
-            frameRate: { ideal: 30 },
+            frameRate: { ideal: 30, min: 24 },
           },
         });
       } catch {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: false,
-            video: { facingMode: 'user' },
+            video: { facingMode: 'user', frameRate: { ideal: 30 } },
           });
         } catch (err) {
           const nameOf = err instanceof DOMException ? err.name : '';
@@ -277,6 +280,11 @@ export function CheckIn({
         } else if (body.type === 'result') {
           running.current = false;
           stopCamera();
+          const pulse = body.pulse as { value?: number } | null;
+          const breathing = body.breathing as { value?: number } | null;
+          setResultPulse(typeof pulse?.value === 'number' ? pulse.value : null);
+          setResultBreathing(typeof breathing?.value === 'number' ? breathing.value : null);
+          setSettled(true);
           setVerdict((body.verdict as Verdict | null) ?? null);
           setSaved(true);
           setPhase('result');
@@ -319,59 +327,71 @@ export function CheckIn({
         }
       };
 
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d', { alpha: false });
-      let busy = false;
-      let last = 0;
-      const tick = async (time: number) => {
-        if (!running.current || abort.signal.aborted) return;
-        if (
-          !busy &&
-          time - last >= 1000 / 30 &&
-          ws.readyState === WebSocket.OPEN &&
-          videoRef.current
-        ) {
-          const video = videoRef.current;
-          if (video.videoWidth > 0 && ws.bufferedAmount < 1_500_000 && context) {
-            last = time;
-            busy = true;
-            try {
-              const longEdge = Math.max(video.videoWidth, video.videoHeight);
-              // 640 on the long edge is enough for the face and chest, and keeps the
-              // server's JPEG decode and the SDK inside a small CPU budget.
-              const scale = Math.min(1, 640 / longEdge);
-              const width = Math.max(2, Math.round((video.videoWidth * scale) / 2) * 2);
-              const height = Math.max(2, Math.round((video.videoHeight * scale) / 2) * 2);
-              if (canvas.width !== width) canvas.width = width;
-              if (canvas.height !== height) canvas.height = height;
-              context.drawImage(video, 0, 0, width, height);
-              const blob = await new Promise<Blob | null>((resolve) =>
-                canvas.toBlob(resolve, 'image/jpeg', 0.86),
-              );
-              if (
-                blob &&
-                running.current &&
-                ws.readyState === WebSocket.OPEN &&
-                ws.bufferedAmount < 1_500_000
-              ) {
-                const jpeg = new Uint8Array(await blob.arrayBuffer());
-                const packet = new Uint8Array(8 + jpeg.length);
-                new DataView(packet.buffer).setFloat64(
-                  0,
-                  (performance.now() - origin) * 1000 + 1_000_000,
-                  false,
-                );
-                packet.set(jpeg, 8);
-                ws.send(packet);
-              }
-            } finally {
-              busy = false;
-            }
-          }
+      const video = videoRef.current;
+      if (!video) return;
+      let encoding = false;
+      let frameHandle = 0;
+      let lastSent = 0;
+      const paced = typeof video.requestVideoFrameCallback !== 'function';
+      const stopLoop = () => {
+        if (typeof video.cancelVideoFrameCallback === 'function') {
+          video.cancelVideoFrameCallback(frameHandle);
+        } else {
+          cancelAnimationFrame(frameHandle);
         }
-        if (running.current && !abort.signal.aborted) requestAnimationFrame(tick);
       };
-      requestAnimationFrame(tick);
+      abort.signal.addEventListener('abort', stopLoop);
+      const schedule = () => {
+        if (!running.current || abort.signal.aborted) return;
+        if (typeof video.requestVideoFrameCallback === 'function') {
+          frameHandle = video.requestVideoFrameCallback(() => {
+            void capture();
+          });
+        } else {
+          frameHandle = requestAnimationFrame(() => {
+            void capture();
+          });
+        }
+      };
+      const capture = async () => {
+        if (!running.current || abort.signal.aborted) return;
+        const now = performance.now();
+        if (
+          encoding ||
+          video.videoWidth <= 0 ||
+          ws.readyState !== WebSocket.OPEN ||
+          ws.bufferedAmount >= 1_500_000 ||
+          (paced && now - lastSent < 1000 / 30)
+        ) {
+          schedule();
+          return;
+        }
+        encoding = true;
+        lastSent = now;
+        try {
+          const blob = await encodeJpeg(video);
+          if (
+            blob &&
+            running.current &&
+            ws.readyState === WebSocket.OPEN &&
+            ws.bufferedAmount < 1_500_000
+          ) {
+            const jpeg = new Uint8Array(await blob.arrayBuffer());
+            const packet = new Uint8Array(8 + jpeg.length);
+            new DataView(packet.buffer).setFloat64(
+              0,
+              (performance.now() - origin) * 1000 + 1_000_000,
+              false,
+            );
+            packet.set(jpeg, 8);
+            ws.send(packet);
+          }
+        } finally {
+          encoding = false;
+          schedule();
+        }
+      };
+      schedule();
     }
 
     if (mode === 'sample') void runSample();
@@ -453,31 +473,48 @@ export function CheckIn({
   }
 
   if (phase === 'result') {
-    const status = verdict?.status ?? (sample ? 'sample' : 'quiet');
+    const thisPulse = settled ? resultPulse : sample ? null : (signals.pulse?.value ?? null);
+    const thisBreathing = settled
+      ? resultBreathing
+      : sample
+        ? null
+        : (signals.breathing?.value ?? null);
+    const thin = !sample && thisPulse === null && thisBreathing === null;
+    const verdictMatches =
+      verdict !== null &&
+      verdict.pulseValue === thisPulse &&
+      verdict.breathingValue === thisBreathing;
+    const status = sample ? 'sample' : thin ? 'quiet' : verdictMatches ? verdict.status : 'quiet';
     return (
       <Shell title="Check-in done">
         <div className="done-hero">
           <Pebble status={status} size={132}>
             {mood && <MoodArt id={mood} className="pebble-art" />}
           </Pebble>
-          <p className="kicker">{sample ? 'Sample · nothing saved' : 'Saved · camera off'}</p>
+          <p className="kicker">
+            {sample
+              ? 'Sample · nothing saved'
+              : thin && !mood && !note
+                ? 'Camera off'
+                : 'Saved · camera off'}
+          </p>
           <h1>{sample ? 'That was a sample' : `Thank you, ${name}`}</h1>
-          <p className="lede">{resultLine(status, name, sample)}</p>
+          <p className="lede">{resultLine(status, name, sample, thin, Boolean(mood || note))}</p>
         </div>
-        {verdict && status !== 'sample' && (
+        {!sample && !thin && (
           <section className="card">
-            <h2 className="card-title">{STATUS_TITLE[status]}</h2>
+            <h2 className="card-title">{verdictMatches ? STATUS_TITLE[status] : 'This sitting'}</h2>
             <RangeBar
               label="Pulse"
               unit="/min"
-              value={verdict.pulseValue}
-              band={verdict.pulseBand}
+              value={thisPulse}
+              band={verdictMatches && verdict ? verdict.pulseBand : null}
             />
             <RangeBar
               label="Breathing"
               unit="/min"
-              value={verdict.breathingValue}
-              band={verdict.breathingBand}
+              value={thisBreathing}
+              band={verdictMatches && verdict ? verdict.breathingBand : null}
             />
           </section>
         )}
@@ -493,7 +530,15 @@ export function CheckIn({
         {note && <p className="note-quote">“{note}”</p>}
         <details className="card fold">
           <summary>Measurement details</summary>
-          {verdict?.explanation && <p>{verdict.explanation}</p>}
+          {thin ? (
+            <p>
+              {mood || note
+                ? 'Not enough steady seconds this time. Your picture and note are kept.'
+                : 'Not enough steady seconds this time. Nothing from this sitting was kept.'}
+            </p>
+          ) : (
+            verdictMatches && verdict?.explanation && <p>{verdict.explanation}</p>
+          )}
           <CoverageLine coverage={signals.coverage} />
           {signals.hrv && (
             <p className="fine">
@@ -522,7 +567,7 @@ export function CheckIn({
   }
 
   return (
-    <Shell title={sample ? 'Sample check-in' : 'Check-in'} tone="night">
+    <Shell title={sample ? 'Sample check-in' : 'Check-in'} tone="night" flush>
       <div className="checkin-top">
         <span className={`badge${sample ? ' sample' : ' live'}`}>
           {sample ? 'Sample · made-up numbers' : 'Live · Presage'}
@@ -596,14 +641,64 @@ export function CheckIn({
   );
 }
 
-function resultLine(status: string, name: string, sample: boolean): string {
+function resultLine(
+  status: string,
+  name: string,
+  sample: boolean,
+  thin: boolean,
+  keptWords: boolean,
+): string {
   if (sample)
     return 'The camera stayed off and nothing was written down. The numbers were made up so you can see how a check-in feels.';
+  if (thin) {
+    return keptWords
+      ? 'Not enough steady seconds this time. Your picture and note are kept.'
+      : 'Not enough steady seconds this time. Nothing from this sitting was kept.';
+  }
   if (status === 'usual') return `Pulse and breathing sat inside ${name}’s own usual range.`;
   if (status === 'different')
     return `Something sat outside ${name}’s own usual range today. It is one day. Read it alongside what you know about them.`;
   if (status === 'learning') return 'Written down. After five steady days we can start comparing.';
   return 'Not enough steady seconds to compare this time. That is fine. The picture still counts.';
+}
+
+const JPEG_QUALITY = 0.7;
+let jpegCanvas: OffscreenCanvas | null = null;
+let jpegFallback: HTMLCanvasElement | null = null;
+
+async function encodeJpeg(video: HTMLVideoElement): Promise<Blob | null> {
+  const longEdge = Math.max(video.videoWidth, video.videoHeight);
+  const scale = Math.min(1, 640 / longEdge);
+  const width = Math.max(2, Math.round((video.videoWidth * scale) / 2) * 2);
+  const height = Math.max(2, Math.round((video.videoHeight * scale) / 2) * 2);
+  try {
+    const bitmap = await createImageBitmap(video, {
+      resizeWidth: width,
+      resizeHeight: height,
+      resizeQuality: 'low',
+    });
+    try {
+      if (!jpegCanvas || jpegCanvas.width !== width || jpegCanvas.height !== height) {
+        jpegCanvas = new OffscreenCanvas(width, height);
+      }
+      const context = jpegCanvas.getContext('2d', { alpha: false });
+      if (!context) return null;
+      context.drawImage(bitmap, 0, 0, width, height);
+      return await jpegCanvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+    } finally {
+      bitmap.close();
+    }
+  } catch {
+    if (!jpegFallback) jpegFallback = document.createElement('canvas');
+    if (jpegFallback.width !== width) jpegFallback.width = width;
+    if (jpegFallback.height !== height) jpegFallback.height = height;
+    const context = jpegFallback.getContext('2d', { alpha: false });
+    if (!context) return null;
+    context.drawImage(video, 0, 0, width, height);
+    return await new Promise((resolve) =>
+      jpegFallback?.toBlob(resolve, 'image/jpeg', JPEG_QUALITY),
+    );
+  }
 }
 
 function Readout({

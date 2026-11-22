@@ -110,6 +110,16 @@ textarea {
   margin: 0 auto;
   padding: 1.1rem 1.15rem calc(2rem + env(safe-area-inset-bottom));
 }
+.page-flush {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: 0;
+}
+.page-flush .checkin-bar {
+  margin-top: auto;
+  bottom: 0;
+}
 
 .kicker {
   margin: 0.6rem 0 0;
@@ -1196,7 +1206,7 @@ body:not([data-tone='night']) .mood[aria-pressed='true'] {
 
 .checkin-tail {
   margin-top: 2.2rem;
-  padding-bottom: 1rem;
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
 }
 .ask {
   font-size: 1.6rem;

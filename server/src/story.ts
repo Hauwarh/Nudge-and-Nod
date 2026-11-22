@@ -134,6 +134,16 @@ function hrvShown(row: StoredCheckin): number | null {
   return row.hrvConfidence >= 50 ? row.hrvRmssd : null;
 }
 
+/** Verdict for one stored sitting, compared only with the sittings before it. */
+export function verdictForCheckin(
+  name: string,
+  rows: readonly StoredCheckin[],
+  id: string,
+): Verdict | null {
+  const assessed = assessAll(rows.map(toObservation), name);
+  return assessed.find((item) => item.observation.id === id)?.verdict ?? null;
+}
+
 export function buildStory(name: string, rows: readonly StoredCheckin[]): StoryModel {
   const assessed = assessAll(rows.map(toObservation), name);
   const byId = new Map<string, Assessed>(assessed.map((item) => [item.observation.id, item]));
