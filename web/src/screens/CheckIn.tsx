@@ -43,6 +43,21 @@ const EMPTY: Signals = {
 };
 
 const MINUTE = 60_000;
+const HIDE_FACE_KEY = 'nudge.hideFace';
+
+function initialHideFace(): boolean {
+  const privacy = new URLSearchParams(location.search).get('privacy');
+  if (privacy === '1') return true;
+  if (privacy === '0') return false;
+  try {
+    const stored = localStorage.getItem(HIDE_FACE_KEY);
+    if (stored === '0') return false;
+    if (stored === '1') return true;
+  } catch {
+    // Private browsing can refuse storage. The preview stays hidden.
+  }
+  return true;
+}
 
 function guide(elapsedMs: number, talking: boolean): string {
   if (talking) return 'A little quieter, if you can.';
@@ -147,6 +162,7 @@ export function CheckIn({
   const [resultBreathing, setResultBreathing] = useState<number | null>(null);
   const [settled, setSettled] = useState(false);
   const [, setSaved] = useState(false);
+  const [hideFace, setHideFace] = useState(initialHideFace);
   const [breath, setBreath] = useState<number | null>(null);
   const traceSpan = useRef({ min: 0, max: 0, seen: false });
   const phaseRef = useRef(phase);
@@ -594,7 +610,27 @@ export function CheckIn({
         breathRate={breathSteady ? (signals.breathing?.value ?? null) : null}
         pulseRate={pulseSteady ? (signals.pulse?.value ?? null) : null}
         progress={elapsed / MINUTE}
+        hideFace={hideFace}
       />
+      <button
+        type="button"
+        className={`face-toggle${hideFace ? ' on' : ''}`}
+        aria-pressed={hideFace}
+        onClick={() => {
+          setHideFace((current) => {
+            const next = !current;
+            try {
+              localStorage.setItem(HIDE_FACE_KEY, next ? '1' : '0');
+            } catch {
+              // The choice still applies for this sitting.
+            }
+            return next;
+          });
+        }}
+      >
+        <span className="face-toggle-knob" aria-hidden="true" />
+        Hide my face
+      </button>
       <p className="hint" role="status" aria-live="polite">
         {hint}
       </p>
@@ -675,6 +711,9 @@ function resultLine(
 
 const JPEG_QUALITY = 0.5;
 const JPEG_LONG_EDGE = 320;
+
+// CSS filters on the preview (the face hide) do not affect capture.
+// createImageBitmap and drawImage read the video element, so the SDK still gets clear frames.
 let jpegCanvas: OffscreenCanvas | null = null;
 let jpegFallback: HTMLCanvasElement | null = null;
 

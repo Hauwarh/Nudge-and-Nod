@@ -37,16 +37,26 @@ export interface SignalSnapshot {
   /** Latest sample that met the library's steady-confidence mark. */
   kept: {
     pulse: Measure | null;
+    /** Median of the steady breathing samples, not the last one. */
     breathing: Measure | null;
     hrv: HrvMeasure | null;
     expression: FaceGlance | null;
   };
+  /** Breathing samples at or above BREATHING_KEEP_MIN. Not stored with the day. */
+  breathingKeepers: Measure[];
 }
 
 export const PULSE_SHOW_MIN = 0;
 export const PULSE_KEEP_MIN = 40;
 export const BREATHING_KEEP_MIN = 45;
 export const HRV_KEEP_MIN = 50;
+/** Breaths per minute we treat as a plausible camera reading. */
+const BREATHING_PLAUSIBLE_MIN = 8;
+const BREATHING_PLAUSIBLE_MAX = 35;
+const BREATHING_OUTLIER_CONFIDENCE = 70;
+const BREATHING_OUTLIER_COUNT = 5;
+/** Samples within about one breath per minute count as the same value. */
+const BREATHING_AGREE_WITHIN = 1;
 
 const EXPRESSION_WORDS: Record<string, string> = {
   '1': 'a tense brow',
@@ -77,6 +87,7 @@ export function emptySnapshot(): SignalSnapshot {
     pulseTrace: null,
     breathTrace: null,
     kept: { pulse: null, breathing: null, hrv: null, expression: null },
+    breathingKeepers: [],
   };
 }
 
@@ -121,6 +132,65 @@ function measureFrom(row: Record<string, unknown> | null): Measure | null {
   const confidence = num(field(row, 'confidence')) ?? 0;
   if (value === null) return null;
   return { value: Math.round(value * 10) / 10, confidence, stable: bool(field(row, 'stable')) };
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const lower = sorted[mid - 1];
+  const upper = sorted[mid];
+  if (upper === undefined) return 0;
+  if (sorted.length % 2 === 1 || lower === undefined) return upper;
+  return (lower + upper) / 2;
+}
+
+/**
+ * Turn the steady breathing samples into the one number we save.
+ * In-range readings (8–35 /min) all count. A value outside that range counts
+ * only when at least five samples agree, within about 1 /min, at confidence
+ * 70 or higher. The saved value is the median of those survivors, and the
+ * confidence is the highest among them. None means we save nothing.
+ */
+export function finalizeBreathing(keepers: readonly Measure[]): Measure | null {
+  if (keepers.length === 0) return null;
+  const inRange = keepers.filter(
+    (sample) => sample.value >= BREATHING_PLAUSIBLE_MIN && sample.value <= BREATHING_PLAUSIBLE_MAX,
+  );
+  const survivors = [...inRange, ...agreedOutliers(keepers)];
+  if (survivors.length === 0) return null;
+  return {
+    value: Math.round(median(survivors.map((sample) => sample.value)) * 10) / 10,
+    confidence: Math.max(...survivors.map((sample) => sample.confidence)),
+    stable: survivors.some((sample) => sample.stable),
+  };
+}
+
+function agreedOutliers(keepers: readonly Measure[]): Measure[] {
+  const strong = keepers.filter(
+    (sample) =>
+      sample.confidence >= BREATHING_OUTLIER_CONFIDENCE &&
+      (sample.value < BREATHING_PLAUSIBLE_MIN || sample.value > BREATHING_PLAUSIBLE_MAX),
+  );
+  if (strong.length < BREATHING_OUTLIER_COUNT) return [];
+  const sorted = [...strong].sort((a, b) => a.value - b.value);
+  const chosen = new Set<Measure>();
+  for (let start = 0; start < sorted.length; start += 1) {
+    const first = sorted[start];
+    if (!first) continue;
+    let end = start;
+    while (end < sorted.length) {
+      const next = sorted[end];
+      if (!next || next.value - first.value > BREATHING_AGREE_WITHIN) break;
+      end += 1;
+    }
+    if (end - start >= BREATHING_OUTLIER_COUNT) {
+      for (let index = start; index < end; index += 1) {
+        const sample = sorted[index];
+        if (sample) chosen.add(sample);
+      }
+    }
+  }
+  return [...chosen];
 }
 
 function keepMeasure(
@@ -196,7 +266,12 @@ export function applyMetrics(previous: SignalSnapshot, decoded: unknown): Signal
   const face = asRecord(field(root, 'face'));
 
   const pulse = measureFrom(last(list(cardio, 'pulseRate', 'pulse_rate'))) ?? previous.pulse;
-  const breath = measureFrom(last(list(breathing, 'rate'))) ?? previous.breathing;
+  const breathSample = measureFrom(last(list(breathing, 'rate')));
+  const breath = breathSample ?? previous.breathing;
+  const breathingKeepers =
+    breathSample && breathSample.confidence >= BREATHING_KEEP_MIN
+      ? [...previous.breathingKeepers, breathSample]
+      : previous.breathingKeepers;
   const hrv = readHrv(cardio) ?? previous.hrv;
   const expression = readExpression(face) ?? previous.expression;
   const talking = readTalking(face);
@@ -214,9 +289,10 @@ export function applyMetrics(previous: SignalSnapshot, decoded: unknown): Signal
     talking: talking === null ? previous.talking : talking,
     pulseTrace,
     breathTrace,
+    breathingKeepers,
     kept: {
       pulse: keepMeasure(pulse, previous.kept.pulse, PULSE_KEEP_MIN),
-      breathing: keepMeasure(breath, previous.kept.breathing, BREATHING_KEEP_MIN),
+      breathing: finalizeBreathing(breathingKeepers),
       hrv: hrv && hrv.confidence >= HRV_KEEP_MIN ? hrv : previous.kept.hrv,
       expression: expression ?? previous.kept.expression,
     },
