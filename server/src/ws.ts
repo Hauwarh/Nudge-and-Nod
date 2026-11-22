@@ -9,7 +9,7 @@ import { parseFrame } from './frames.js';
 import { guardedOpen, SdkStartupError, type SdkHost } from './sdk-host.js';
 import { logger } from './logger.js';
 import { releaseSdk } from './sdk.js';
-import { buildStory, shouldKeepCheckin } from './story.js';
+import { shouldKeepCheckin, verdictForCheckin } from './story.js';
 import type { Store } from './store.js';
 
 const CONSENT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
@@ -168,7 +168,7 @@ function handleConnection(
         if ((reason === 'finish' || reason === 'withdraw') && memberId) {
           const member = store.member(household!.id, memberId);
           const rows = store.checkinsFor(household!.id, memberId);
-          const story = buildStory(member?.displayName ?? memberName, rows);
+          const verdict = verdictForCheckin(member?.displayName ?? memberName, rows, id);
           send(socket, {
             type: 'result',
             checkinId: id,
@@ -180,7 +180,7 @@ function handleConnection(
             expression: kept.expression,
             coverage: sessionLive.coverageSnapshot(),
             endedReason: reason,
-            verdict: story.latest?.verdict ?? null,
+            verdict,
             disclaimer: NOT_A_MEDICAL_DEVICE,
           });
         }

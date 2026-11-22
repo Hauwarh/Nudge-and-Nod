@@ -6,10 +6,13 @@ import { whole } from '../format';
 export function Shell({
   title,
   tone = 'day',
+  flush = false,
   children,
 }: {
   title?: string;
   tone?: 'day' | 'night';
+  /** Drop the page's bottom padding so a sticky bar can sit on the viewport edge. */
+  flush?: boolean;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -24,7 +27,7 @@ export function Shell({
       <a className="skip" href="#content">
         Skip to content
       </a>
-      <main id="content" className="page">
+      <main id="content" className={flush ? 'page page-flush' : 'page'}>
         {children}
       </main>
     </>
