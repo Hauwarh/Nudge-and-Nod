@@ -108,15 +108,6 @@ export function StoryScreen({
 
 const RECENT_DAYS = 4;
 
-function allSignalsSentence(day: StoryDay): string | null {
-  const parts: string[] = [];
-  if (day.hrvRmssd !== null) parts.push(`RMSSD ${Math.round(day.hrvRmssd)} ms`);
-  if (day.hrvSdnn !== null) parts.push(`SDNN ${Math.round(day.hrvSdnn)} ms`);
-  if (day.expressionWords) parts.push(`the camera saw ${day.expressionWords}`);
-  if (parts.length === 0) return null;
-  return `All signals, not used for usual or different: ${parts.join(', ')}. Not a wellbeing score.`;
-}
-
 function DayList({
   days,
   showEarlier,
@@ -130,9 +121,12 @@ function DayList({
   const hidden = days.length - visible.length;
   return (
     <>
+      <p className="fine">
+        Face descriptions and beat-to-beat numbers, when a sitting has them, are not part of usual
+        or different, and they are not a wellbeing score.
+      </p>
       <ol className="timeline">
         {visible.map((day) => {
-          const signals = allSignalsSentence(day);
           return (
             <li key={day.id} className={day.status === 'different' ? 'different' : undefined}>
               <p className="day-date">{dayLabel(day.at)}</p>
@@ -151,12 +145,9 @@ function DayList({
                     : ''}
                   {day.pulseSamples !== null ? ` · ${day.pulseSamples} pulse samples` : ''}
                   {day.endedReason === 'withdrawn' ? ' · agreement withdrawn' : ''}
+                  {day.hrvRmssd !== null ? ` · RMSSD ${Math.round(day.hrvRmssd)} ms` : ''}
+                  {day.expressionWords ? ` · camera saw ${day.expressionWords}` : ''}
                 </p>
-                {signals && (
-                  <p className="fine" style={{ margin: '0.15rem 0 0' }}>
-                    {signals}
-                  </p>
-                )}
                 <p className="fine" style={{ margin: '0.15rem 0 0' }}>
                   {day.status === 'different'
                     ? 'Different from the days before it'

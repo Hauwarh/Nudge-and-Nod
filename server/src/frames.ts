@@ -1,4 +1,4 @@
-import jpeg from 'jpeg-js';
+import sharp from 'sharp';
 
 export interface DecodedFrame {
   width: number;
@@ -28,35 +28,21 @@ export function acceptTimestamp(previous: number, next: number): boolean {
 }
 
 /**
- * Decode a JPEG into packed RGB for `sendFrame`.
- * A fresh buffer is allocated every time: `sendFrame` may retain the pointer
- * past the call, and recycling a buffer would corrupt the next frame.
+ * Decode a JPEG to packed RGB for `sendFrame`. sharp returns a new buffer
+ * each call. A pure-JS decode of a 640px frame is too slow to hold 25–30 fps.
  */
-export function jpegToRgb(input: Buffer): DecodedFrame | null {
-  let decoded: { width: number; height: number; data: Uint8Array };
+export async function jpegToRgb(input: Buffer): Promise<DecodedFrame | null> {
   try {
-    decoded = jpeg.decode(input, {
-      useTArray: true,
-      formatAsRGBA: true,
-      maxResolutionInMP: 2.5,
-      maxMemoryUsageInMB: 48,
-    });
+    const { data, info } = await sharp(input, { failOn: 'none', limitInputPixels: 2_500_000 })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = info;
+    if (!width || !height || channels !== 3) return null;
+    if (width < 120 || height < 120 || width > 1280 || height > 1280) return null;
+    if (data.length !== width * height * 3) return null;
+    return { width, height, rgb: data };
   } catch {
     return null;
   }
-  const { width, height, data } = decoded;
-  if (!width || !height) return null;
-  if (width < 120 || height < 120 || width > 1280 || height > 1280) return null;
-  if (data.length < width * height * 4) return null;
-  const rgb = Buffer.allocUnsafe(width * height * 3);
-  let source = 0;
-  let dest = 0;
-  const pixels = width * height;
-  for (let i = 0; i < pixels; i += 1) {
-    rgb[dest++] = data[source++] ?? 0;
-    rgb[dest++] = data[source++] ?? 0;
-    rgb[dest++] = data[source++] ?? 0;
-    source += 1;
-  }
-  return { width, height, rgb };
 }

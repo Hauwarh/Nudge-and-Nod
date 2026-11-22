@@ -13,8 +13,16 @@ export function DayChart({ days, band }: { days: StoryDay[]; band: Band | null }
   const values = points.map((day) => day.pulse as number);
   const lows = band ? [band.low, band.q1] : [];
   const highs = band ? [band.high, band.q3] : [];
-  const min = Math.min(...values, ...lows) - 2;
-  const max = Math.max(...values, ...highs) + 2;
+  const rawMin = Math.min(...values, ...lows);
+  const rawMax = Math.max(...values, ...highs);
+  let min = rawMin - 2;
+  let max = rawMax + 2;
+  // A 6 bpm cluster should not fill the chart. Keep at least a 20 bpm window.
+  if (max - min < 20) {
+    const mid = (rawMin + rawMax) / 2;
+    min = mid - 10;
+    max = mid + 10;
+  }
   const span = Math.max(1, max - min);
   const x = (index: number) =>
     padL + (index * (width - padL - padR)) / Math.max(1, points.length - 1);

@@ -27,7 +27,7 @@ test('timestamps must move forward', () => {
   assert.equal(acceptTimestamp(2000, 1500), false);
 });
 
-test('jpegToRgb returns packed RGB', () => {
+test('jpegToRgb returns packed RGB', async () => {
   const width = 160;
   const height = 120;
   const data = Buffer.alloc(width * height * 4);
@@ -38,7 +38,7 @@ test('jpegToRgb returns packed RGB', () => {
     data[i * 4 + 3] = 255;
   }
   const encoded = jpeg.encode({ data, width, height }, 90);
-  const frame = jpegToRgb(Buffer.from(encoded.data));
+  const frame = await jpegToRgb(Buffer.from(encoded.data));
   assert.ok(frame);
   assert.equal(frame?.width, width);
   assert.equal(frame?.height, height);

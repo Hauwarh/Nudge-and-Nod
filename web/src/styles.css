@@ -191,6 +191,7 @@ textarea {
   letter-spacing: 0.01em;
   cursor: pointer;
   text-align: center;
+  text-decoration: none;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -415,6 +416,7 @@ textarea {
   display: block;
   font-weight: 700;
   color: var(--ink-soft);
+  white-space: nowrap;
 }
 .signal strong {
   font-size: 2.5rem;
@@ -469,7 +471,13 @@ textarea {
 }
 
 .checkin-tail {
-  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
+}
+.status-banner {
+  margin: 0.55rem 0 0.2rem;
+  min-height: 3rem;
+  font-size: 1.15rem;
+  font-weight: 700;
 }
 .checkin-bar {
   position: sticky;

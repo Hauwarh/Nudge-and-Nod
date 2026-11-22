@@ -54,6 +54,9 @@ function guide(elapsedMs: number, talking: boolean): string {
 function visibleHint(signals: Signals, elapsedMs: number): string {
   if (signals.validation.code !== 0 && signals.validation.hint.trim())
     return signals.validation.hint.trim();
+  if (!signals.pulse) {
+    return 'Looking for a face. Come closer, with the light on your face, and hold still.';
+  }
   return guide(elapsedMs, signals.talking);
 }
 
@@ -325,14 +328,21 @@ export function CheckIn({
       let last = 0;
       const tick = async (time: number) => {
         if (!running.current || abort.signal.aborted) return;
-        if (!busy && time - last >= 40 && ws.readyState === WebSocket.OPEN && videoRef.current) {
+        if (
+          !busy &&
+          time - last >= 1000 / 30 &&
+          ws.readyState === WebSocket.OPEN &&
+          videoRef.current
+        ) {
           const video = videoRef.current;
           if (video.videoWidth > 0 && ws.bufferedAmount < 1_500_000 && context) {
             last = time;
             busy = true;
             try {
               const longEdge = Math.max(video.videoWidth, video.videoHeight);
-              const scale = Math.min(1, 960 / longEdge);
+              // 640 on the long edge is enough for the face and chest, and keeps the
+              // server's JPEG decode and the SDK inside a small CPU budget.
+              const scale = Math.min(1, 640 / longEdge);
               const width = Math.max(2, Math.round((video.videoWidth * scale) / 2) * 2);
               const height = Math.max(2, Math.round((video.videoHeight * scale) / 2) * 2);
               if (canvas.width !== width) canvas.width = width;
@@ -526,11 +536,11 @@ export function CheckIn({
           </span>
         </div>
       </div>
-      <SignalGrid signals={signals} />
-      <CoverageLine coverage={signals.coverage} />
-      <p className="hint" role="status">
+      <p className="status-banner" role="status">
         {hint}
       </p>
+      <SignalGrid signals={signals} />
+      <CoverageLine coverage={signals.coverage} />
       {signals.expression && (
         <p className="fine">
           What the camera saw: {signals.expression.words}. A face is not a feeling. The picture you
@@ -561,6 +571,13 @@ export function CheckIn({
             </button>
           )}
         </div>
+        {mode === 'live' && (
+          <p>
+            <button className="btn quiet" type="button" onClick={withdraw}>
+              Withdraw agreement and stop
+            </button>
+          </p>
+        )}
       </div>
       <div className="checkin-bar">
         <p className={`rec${mode === 'sample' ? ' off' : ''}`}>
@@ -571,13 +588,6 @@ export function CheckIn({
           {mode === 'live' ? 'Stop' : 'End sample'}
         </button>
       </div>
-      {mode === 'live' && (
-        <p>
-          <button className="btn quiet" type="button" onClick={withdraw}>
-            Withdraw agreement and stop
-          </button>
-        </p>
-      )}
     </Shell>
   );
 }

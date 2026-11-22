@@ -29,6 +29,7 @@ export interface SdkChild {
   send(message: unknown): boolean | void;
   kill(signal?: NodeJS.Signals | number): boolean | void;
   on(event: 'message', listener: (message: unknown) => void): unknown;
+  on(event: 'error', listener: (err: Error) => void): unknown;
   on(
     event: 'exit',
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
@@ -45,7 +46,12 @@ export interface SdkHostOptions {
 interface PublicCoverage {
   elapsedSeconds: number;
   pulse: { samples: number; validSeconds: number; lastAtMs: number | null; ageMs: number | null };
-  breathing: { samples: number; validSeconds: number; lastAtMs: number | null; ageMs: number | null };
+  breathing: {
+    samples: number;
+    validSeconds: number;
+    lastAtMs: number | null;
+    ageMs: number | null;
+  };
   hrv: { samples: number; validSeconds: number; lastAtMs: number | null; ageMs: number | null };
 }
 
@@ -66,6 +72,8 @@ interface SummaryMessage {
 export class SdkHost {
   private child: SdkChild | null = null;
   private lastTs = -1;
+  private frameInFlight = false;
+  private pendingFrame: { jpeg: Buffer; timestampUs: number } | null = null;
   private opened = false;
   private destroyed = false;
   /** A stop or a kill we asked for. The child's exit is not a Presage failure. */
@@ -103,7 +111,15 @@ export class SdkHost {
     const child = (this.options.spawn ?? forkSdkChild)();
     this.child = child;
     child.on('message', (message) => this.onMessage(message));
-    child.on('exit', () => this.onExit());
+    // Without this listener, a send() after the child died emits an
+    // unhandled 'error' (ERR_IPC_CHANNEL_CLOSED) and takes the whole server down.
+    child.on('error', (err: Error) => {
+      logger.warn({ err: err.message }, 'sdk child ipc error');
+    });
+    child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+      logger.info({ code, signal, quiet: this.quietExit }, 'sdk child exited');
+      this.onExit();
+    });
     child.send({
       type: 'open',
       apiKey: this.options.apiKey,
@@ -129,10 +145,28 @@ export class SdkHost {
     if (!this.opened || !this.child || this.destroyed) return { ok: false, reason: 'closed' };
     if (!acceptTimestamp(this.lastTs, timestampUs)) return { ok: false, reason: 'timestamp' };
     this.lastTs = timestampUs;
+    if ('connected' in this.child && this.child.connected === false) {
+      return { ok: false, reason: 'closed' };
+    }
+    if (this.frameInFlight) {
+      // Keep only the newest frame. A queue would fall behind the 25 fps floor.
+      this.pendingFrame = { jpeg, timestampUs };
+      return { ok: true, reason: 'coalesced' };
+    }
+    return this.dispatchFrame(jpeg, timestampUs);
+  }
+
+  private dispatchFrame(jpeg: Buffer, timestampUs: number): { ok: boolean; reason: string } {
+    if (!this.child) return { ok: false, reason: 'closed' };
+    this.frameInFlight = true;
     try {
       const sent = this.child.send({ type: 'frame', jpeg, timestampUs });
-      if (sent === false) return { ok: false, reason: 'closed' };
+      if (sent === false) {
+        this.frameInFlight = false;
+        return { ok: false, reason: 'closed' };
+      }
     } catch {
+      this.frameInFlight = false;
       return { ok: false, reason: 'closed' };
     }
     return { ok: true, reason: 'queued' };
@@ -240,6 +274,13 @@ export class SdkHost {
       this.rejectReady(new SdkStartupError(text, code));
       return;
     }
+    if (body.type === 'frame-ack') {
+      this.frameInFlight = false;
+      const next = this.pendingFrame;
+      this.pendingFrame = null;
+      if (next) this.dispatchFrame(next.jpeg, next.timestampUs);
+      return;
+    }
     if (body.type === 'summary') {
       this.applySummary(body as SummaryMessage);
       this.summaryResolve?.();
@@ -331,5 +372,10 @@ export function forkSdkChild(): ChildProcess {
   return fork(script, [], {
     execArgv: script.endsWith('.ts') ? ['--import', 'tsx'] : [],
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    // Frames are Buffers. The default 'json' IPC turns a Buffer into
+    // { type: 'Buffer', data: [...] }, so the child's Buffer.isBuffer check
+    // failed and every frame was silently dropped. 'advanced' uses the
+    // structured clone algorithm and keeps Buffers as Buffers.
+    serialization: 'advanced',
   });
 }

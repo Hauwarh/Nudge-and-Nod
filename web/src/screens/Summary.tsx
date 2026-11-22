@@ -85,7 +85,7 @@ export function SummaryScreen({ memberId, onBack }: { memberId: string; onBack: 
                 <tbody>
                   {summary.days.map((day) => (
                     <tr key={day.id}>
-                      <td>{day.at.slice(0, 10)}</td>
+                      <td>{dayLabel(day.at)}</td>
                       <td>{day.moodLabel ?? '—'}</td>
                       <td>{day.pulse !== null ? whole(day.pulse) : '—'}</td>
                       <td>{day.breathing !== null ? whole(day.breathing) : '—'}</td>

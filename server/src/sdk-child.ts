@@ -74,6 +74,29 @@ async function stop(): Promise<void> {
   process.exit(0);
 }
 
+let frameBusy = false;
+let pendingFrame: { jpeg: Buffer; timestampUs: number } | null = null;
+
+async function handleFrame(jpeg: Buffer, timestampUs: number): Promise<void> {
+  if (frameBusy) {
+    pendingFrame = { jpeg, timestampUs };
+    return;
+  }
+  frameBusy = true;
+  try {
+    await session?.pushJpeg(jpeg, timestampUs);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'frame failed';
+    send({ type: 'sdk_error', code: 'presage', message, retryable: true });
+  } finally {
+    frameBusy = false;
+    send({ type: 'frame-ack' });
+    const next = pendingFrame;
+    pendingFrame = null;
+    if (next) void handleFrame(next.jpeg, next.timestampUs);
+  }
+}
+
 process.on('message', (message: unknown) => {
   if (!message || typeof message !== 'object') return;
   const body = message as {
@@ -87,13 +110,21 @@ process.on('message', (message: unknown) => {
     void open(body.apiKey, Boolean(body.telemetry));
     return;
   }
+  if (body.type === 'probe-frame') {
+    send({
+      type: 'probe-frame',
+      isBuffer: Buffer.isBuffer(body.jpeg),
+      length: Buffer.isBuffer(body.jpeg) ? body.jpeg.length : 0,
+    });
+    return;
+  }
   if (
     body.type === 'frame' &&
     session &&
     Buffer.isBuffer(body.jpeg) &&
     typeof body.timestampUs === 'number'
   ) {
-    session.pushJpeg(body.jpeg, body.timestampUs);
+    void handleFrame(body.jpeg, body.timestampUs);
     return;
   }
   if (body.type === 'summary') {

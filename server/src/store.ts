@@ -629,6 +629,10 @@ export class Store {
     }));
   }
 
+  deleteCheckin(id: string, householdId: string): void {
+    this.db.prepare('DELETE FROM checkins WHERE id = ? AND household_id = ?').run(id, householdId);
+  }
+
   deleteHouseholdData(householdId: string): { checkins: number; consents: number } {
     const checkins = this.db
       .prepare('DELETE FROM checkins WHERE household_id = ?')
