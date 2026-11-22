@@ -9,6 +9,10 @@ export const WHAT_THIS_IS_NOT = [
   '“Usual” means “like their own recent check-ins here”. It does not mean healthy.',
 ].join(' ');
 
+/** Shown on every screen. The full paragraph lives on Welcome, Settings and the summary. */
+export const SHORT_DISCLAIMER =
+  'Not a medical device. If you are worried about someone, contact a doctor or a person you trust.';
+
 export const MOODS = [
   { id: 'sunny', label: 'Good', hint: 'A bright day' },
   { id: 'steady', label: 'Okay', hint: 'Steady enough' },
@@ -16,6 +20,14 @@ export const MOODS = [
   { id: 'uneasy', label: 'Unsettled', hint: 'Not quite right' },
   { id: 'company', label: 'Stay close', hint: 'Someone near, please' },
 ] as const;
+
+export const MOOD_BY_LABEL: Record<string, (typeof MOODS)[number]['id']> = {
+  Good: 'sunny',
+  Okay: 'steady',
+  Tired: 'tired',
+  Unsettled: 'uneasy',
+  'Stay close': 'company',
+};
 
 export type MoodId = (typeof MOODS)[number]['id'];
 

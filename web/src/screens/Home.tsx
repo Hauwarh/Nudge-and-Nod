@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
-import { dayLabel, houseWord } from '../format';
+import { dayLabel } from '../format';
 import type { Me, Story } from '../types';
-import { Disclaimer, Shell, VerdictLabel, Wordmark } from '../components/ui';
+import { PebbleStrip } from '../components/PebbleStrip';
+import { Disclaimer, Pebble, STATUS_TITLE, Shell, Wordmark } from '../components/ui';
 
 export function Home({
   me,
@@ -16,7 +17,6 @@ export function Home({
   onSettings: () => void;
 }) {
   const people = me.members.filter((member) => member.role === 'person');
-  const carers = me.members.filter((member) => member.role === 'carer');
   const [stories, setStories] = useState<Story[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,78 +46,61 @@ export function Home({
           House
         </button>
       </div>
-      <p className="kicker">{houseWord(me.household.code)}</p>
-      <h1>{greeting}.</h1>
+      <h1>{greeting}</h1>
       {me.household.demo && (
         <p className="callout">
-          This is the sample house. The days below are made up, so you can look around without a
-          camera. A real check-in needs a Presage key on the server.
+          <strong>Sample house.</strong> Made-up days, so you can look around without a camera.
         </p>
       )}
-      <p className="lede">
-        {carers.length > 0
-          ? `${carers.map((c) => c.displayName).join(' and ')} can see this too. `
-          : ''}
-        The camera stays off until a check-in starts, with the person there.
-      </p>
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
-      {!stories && !error && <p>Reading the days…</p>}
+      {!stories && !error && <p className="loading">Reading the days…</p>}
       <div className="person-list">
         {people.map((person) => {
           const story = stories?.find((item) => item.member.id === person.id) ?? null;
           const latest = story?.latest ?? null;
-          const today = latest && dayLabel(latest.at) === 'Today';
+          const today = latest !== null && dayLabel(latest.at) === 'Today';
+          const recent = story ? story.days.slice(-7) : [];
           return (
-            <article key={person.id} className={`card ${today ? latest.verdict.status : ''}`}>
-              <h3>{person.displayName}</h3>
-              {!latest && <p>No check-ins yet. The first few are just a record.</p>}
-              {latest && today && (
-                <>
-                  <VerdictLabel status={latest.verdict.status} headline={latest.verdict.headline} />
-                  <p>{latest.verdict.explanation}</p>
-                </>
-              )}
-              {latest && !today && (
-                <>
-                  <p>
-                    <strong>No check-in yet today.</strong>
-                  </p>
-                  <p className="fine">
-                    {dayLabel(latest.at)}:{' '}
-                    {latest.verdict.headline
-                      .replace(/^Looks like a usual day$/, 'looked like a usual day')
-                      .replace(
-                        /^Different from their usual days$/,
-                        'different from their usual days',
-                      )}
-                  </p>
-                </>
-              )}
-              <div className="stack">
-                <button
-                  className="btn leaf wide"
-                  type="button"
-                  onClick={() => onCheckIn(person.id)}
-                >
-                  Start {person.displayName}’s check-in
-                </button>
-                <button
-                  className="btn secondary wide"
-                  type="button"
-                  onClick={() => onStory(person.id)}
-                >
-                  See the days
-                </button>
-              </div>
+            <article key={person.id} className="person">
+              <button
+                type="button"
+                className="person-head"
+                onClick={() => onStory(person.id)}
+                aria-label={`See ${person.displayName}’s days`}
+              >
+                <span className="avatar" aria-hidden="true">
+                  {person.displayName.charAt(0)}
+                </span>
+                <span className="person-name">
+                  <strong>{person.displayName}</strong>
+                  <span className="person-sub">
+                    {!latest && 'No check-ins yet'}
+                    {latest && today && (
+                      <>
+                        <Pebble status={latest.verdict.status} size={14} />{' '}
+                        {STATUS_TITLE[latest.verdict.status]} today
+                      </>
+                    )}
+                    {latest && !today && `Last check-in ${dayLabel(latest.at).toLowerCase()}`}
+                  </span>
+                </span>
+                <span className="chev" aria-hidden="true">
+                  ›
+                </span>
+              </button>
+              {recent.length > 0 && <PebbleStrip days={recent} size={34} />}
+              <button className="btn moss wide" type="button" onClick={() => onCheckIn(person.id)}>
+                {today ? 'Check in again' : `Check in with ${person.displayName}`}
+              </button>
             </article>
           );
         })}
       </div>
-      <Disclaimer text={me.disclaimer} />
+      <Disclaimer />
     </Shell>
   );
 }

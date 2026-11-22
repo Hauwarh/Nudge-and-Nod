@@ -169,7 +169,7 @@ export function Consent({
         </button>
       </div>
       <WhatThisIsNot />
-      <Disclaimer text={me.disclaimer} />
+      <Disclaimer />
     </Shell>
   );
 }

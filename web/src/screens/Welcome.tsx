@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api';
-import { Disclaimer, Shell, WhatThisIsNot, Wordmark } from '../components/ui';
+import { Disclaimer, Mark, Shell, WhatThisIsNot } from '../components/ui';
 
 export function Welcome({ onEntered, onCreate }: { onEntered: () => void; onCreate: () => void }) {
   const [code, setCode] = useState('');
@@ -43,15 +43,29 @@ export function Welcome({ onEntered, onCreate }: { onEntered: () => void; onCrea
 
   return (
     <Shell title="Come in">
-      <Wordmark />
-      <p className="kicker">A daily nudge, any kind of nod</p>
-      <h1>How was today, really?</h1>
-      <p className="lede">
-        For someone who may not say much, and for the people who look after them. A nudge is the
-        gentle ask. A nod is any answer: a picture, a few typed words, or simply sitting where the
-        camera can see.
-      </p>
-      <form onSubmit={submit} className="card">
+      <section className="welcome-hero">
+        <Mark size={120} nodding />
+        <p className="wordmark-big">
+          Nudge <em>&amp;</em> Nod
+        </p>
+        <h1>
+          A gentle daily <span className="nowrap">check-in</span>, for people who don’t always say.
+        </h1>
+        <p className="lede">
+          A minute with the phone camera. Tap a picture. Family sees whether today looks like their
+          usual.
+        </p>
+      </section>
+      <div className="stack">
+        <button className="btn apricot wide" type="button" onClick={sample} disabled={busy}>
+          Look around the sample house
+        </button>
+        <p className="fine center">
+          For judges: house word <strong>maple</strong>, PIN <strong>2468</strong>.
+        </p>
+      </div>
+      <form onSubmit={submit} className="card signin">
+        <h2 className="card-title">Your house</h2>
         <div className="field">
           <label htmlFor="code">House word</label>
           <input
@@ -87,23 +101,12 @@ export function Welcome({ onEntered, onCreate }: { onEntered: () => void; onCrea
         <button className="btn wide" type="submit" disabled={busy}>
           {busy ? 'Opening…' : 'Come in'}
         </button>
-      </form>
-      <div className="stack" style={{ marginTop: '0.9rem' }}>
-        <button className="btn secondary wide" type="button" onClick={onCreate}>
-          Start a house
+        <button className="btn quiet wide" type="button" onClick={onCreate}>
+          Start a new house
         </button>
-        <div className="callout">
-          <p>
-            <strong>Judges and visitors.</strong> The sample house word is <strong>maple</strong>,
-            PIN <strong>2468</strong>. June and Arthur’s days are made up.
-          </p>
-          <button className="btn leaf wide" type="button" onClick={sample} disabled={busy}>
-            Look around the sample house
-          </button>
-        </div>
-      </div>
+      </form>
       <WhatThisIsNot />
-      <Disclaimer />
+      <Disclaimer full />
     </Shell>
   );
 }

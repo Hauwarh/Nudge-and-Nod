@@ -107,84 +107,101 @@ export function Settings({
         small lock for a demo, not a hospital login: four to six digits, slowed after repeated
         misses.
       </p>
-      <h2>How long we keep days</h2>
-      <div className="segmented" role="group" aria-label="Retention">
-        {[7, 30, 90].map((days) => (
-          <button
-            key={days}
-            className="btn secondary"
-            type="button"
-            aria-pressed={retention === days}
-            onClick={() => void saveRetention(days as 7 | 30 | 90)}
-          >
-            {days} days
+      <section className="block">
+        <h2>How long we keep days</h2>
+        <div className="segmented" role="group" aria-label="Retention">
+          {[7, 30, 90].map((days) => (
+            <button
+              key={days}
+              className="btn secondary"
+              type="button"
+              aria-pressed={retention === days}
+              onClick={() => void saveRetention(days as 7 | 30 | 90)}
+            >
+              {days} days
+            </button>
+          ))}
+        </div>
+        <p className="fine">
+          Older check-ins are deleted on their own. On the free host, a restart can also forget the
+          database. Don’t treat this as the only copy that matters.
+        </p>
+      </section>
+      <section className="block">
+        <h2>Add someone</h2>
+        <form onSubmit={addPerson}>
+          <div className="field">
+            <label htmlFor="someone">Their name</label>
+            <input
+              id="someone"
+              type="text"
+              value={personName}
+              onChange={(e) => setPersonName(e.target.value)}
+              required
+            />
+          </div>
+          <button className="btn secondary" type="submit" disabled={busy}>
+            Add to the house
           </button>
-        ))}
-      </div>
-      <p className="fine">
-        Older check-ins are deleted on their own. On the free host, a restart can also forget the
-        database. Don’t treat this as the only copy that matters.
-      </p>
-      <h2>Add someone</h2>
-      <form onSubmit={addPerson}>
+        </form>
+      </section>
+      <section className="block">
+        <h2>Download the history</h2>
+        <p>
+          A JSON file of names, agreements, pictures tapped, notes, and the numbers, including how
+          many steady seconds each signal had. No video. Withdrawing an agreement does not create
+          this file, and downloading it does not delete anything.
+        </p>
+        <a className="btn secondary" href="/api/export">
+          Download JSON
+        </a>
+      </section>
+      <section className="block">
+        <h2>What happens to the picture</h2>
+        <p>
+          Frames go to this house’s server, are read in memory, and are never saved. Only the
+          numbers, the picture tapped and typed notes are kept. No AI services.
+        </p>
+        <details className="fold-inline">
+          <summary>Exactly what Presage receives</summary>
+          <p className="narrative">{TELEMETRY_NOTE}</p>
+        </details>
+        <p className="fine">
+          Live signals right now:{' '}
+          {me.live.keyConfigured && me.live.sdkPresent
+            ? 'the server has a Presage key and the library.'
+            : 'the camera check-in is not ready. The sample check-in still is.'}{' '}
+          Telemetry is {me.live.telemetry ? 'on' : 'off'}.
+        </p>
+      </section>
+      <WhatThisIsNot />
+      <section className="block danger">
+        <h2>Delete all our data</h2>
+        <p>
+          This removes check-ins, notes, pictures tapped, and agreements. Names and the house word
+          stay, so you can still come in. A printed summary is already out of our hands.
+        </p>
         <div className="field">
-          <label htmlFor="someone">Their name</label>
+          <label htmlFor="confirm">Type delete to confirm</label>
           <input
-            id="someone"
+            id="confirm"
             type="text"
-            value={personName}
-            onChange={(e) => setPersonName(e.target.value)}
-            required
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoCapitalize="none"
           />
         </div>
-        <button className="btn secondary" type="submit" disabled={busy}>
-          Add to the house
+        <button
+          className="btn clay"
+          type="button"
+          disabled={confirm.trim().toLowerCase() !== 'delete' || busy}
+          onClick={() => void wipe()}
+        >
+          Delete all our data
         </button>
-      </form>
-      <h2>Download the history</h2>
-      <p>
-        A JSON file of names, agreements, pictures tapped, notes, and the numbers, including how
-        many steady seconds each signal had. No video. Withdrawing an agreement does not create this
-        file, and downloading it does not delete anything.
-      </p>
-      <a className="btn secondary" href="/api/export">
-        Download JSON
-      </a>
-      <WhatThisIsNot />
-      <h2>What happens to the picture</h2>
-      <p className="narrative">{TELEMETRY_NOTE}</p>
-      <p>
-        Live signals right now:{' '}
-        {me.live.keyConfigured && me.live.sdkPresent
-          ? 'the server has a Presage key and the library.'
-          : 'the camera check-in is not ready. The sample check-in still is.'}{' '}
-        Telemetry is {me.live.telemetry ? 'on' : 'off'}.
-      </p>
-      <h2>Delete all our data</h2>
-      <p>
-        This removes check-ins, notes, pictures tapped, and agreements. Names and the house word
-        stay, so you can still come in. A printed summary is already out of our hands.
-      </p>
-      <div className="field">
-        <label htmlFor="confirm">Type delete to confirm</label>
-        <input
-          id="confirm"
-          type="text"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          autoCapitalize="none"
-        />
-      </div>
-      <button
-        className="btn clay"
-        type="button"
-        disabled={confirm.trim().toLowerCase() !== 'delete' || busy}
-        onClick={() => void wipe()}
-      >
-        Delete all our data
-      </button>
+      </section>
       {me.household.demo && (
-        <>
+        <section className="block">
           <h2>Sample days</h2>
           <p>
             Put June and Arthur’s made-up days back. This replaces whatever is in the Maple house.
@@ -197,7 +214,7 @@ export function Settings({
           >
             Restore sample days
           </button>
-        </>
+        </section>
       )}
       {message && <p role="status">{message}</p>}
       {error && (
@@ -210,7 +227,7 @@ export function Settings({
           Leave this house
         </button>
       </p>
-      <Disclaimer text={me.disclaimer} />
+      <Disclaimer full />
     </Shell>
   );
 }

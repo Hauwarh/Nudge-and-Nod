@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api';
+import { MOOD_BY_LABEL } from '../copy';
 import { dayLabel, whole } from '../format';
 import type { Story, StoryDay } from '../types';
 import { DayChart } from '../components/DayChart';
-import { Disclaimer, Shell, VerdictLabel, Wordmark } from '../components/ui';
+import { MoodArt } from '../components/MoodBoard';
+import { PebbleStrip } from '../components/PebbleStrip';
+import { Disclaimer, Pebble, RangeBar, STATUS_TITLE, Shell, statusWord } from '../components/ui';
 
 export function StoryScreen({
   memberId,
@@ -18,14 +21,21 @@ export function StoryScreen({
 }) {
   const [story, setStory] = useState<Story | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showEarlier, setShowEarlier] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const scroller = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [story]);
 
   useEffect(() => {
     let cancel = false;
-    setShowEarlier(false);
     api<Story>(`/api/people/${memberId}/story`)
       .then((next) => {
-        if (!cancel) setStory(next);
+        if (cancel) return;
+        setStory(next);
+        setSelected(next.days[next.days.length - 1]?.id ?? null);
       })
       .catch((err: unknown) => {
         if (!cancel) setError(err instanceof ApiError ? err.message : 'The days did not load.');
@@ -35,15 +45,17 @@ export function StoryScreen({
     };
   }, [memberId]);
 
+  const day = story?.days.find((item) => item.id === selected) ?? null;
+  const latest = story?.latest ?? null;
+
   return (
     <Shell title={story ? `${story.name}’s days` : 'Days'}>
       <div className="topbar">
-        <Wordmark />
-        <button className="linkish" type="button" onClick={onBack}>
-          House
+        <button className="linkish back" type="button" onClick={onBack}>
+          ‹ House
         </button>
       </div>
-      {!story && !error && <p>Reading the days…</p>}
+      {!story && !error && <p className="loading">Reading the days…</p>}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -51,123 +63,157 @@ export function StoryScreen({
       )}
       {story && (
         <>
-          <p className="kicker">Their own days</p>
-          <h1>{story.name}</h1>
-          {story.latest ? (
-            <article className={`card ${story.latest.verdict.status}`}>
-              <p className="fine">{dayLabel(story.latest.at)}</p>
-              <VerdictLabel
-                status={story.latest.verdict.status}
-                headline={story.latest.verdict.headline}
-              />
-              <p>{story.latest.verdict.explanation}</p>
-            </article>
+          <header className="story-head">
+            <span className="avatar big" aria-hidden="true">
+              {story.name.charAt(0)}
+            </span>
+            <div>
+              <h1>{story.name}</h1>
+              {latest ? (
+                <p className="story-status">
+                  <Pebble status={latest.verdict.status} size={18} />
+                  {STATUS_TITLE[latest.verdict.status]}
+                  <span className="fine"> · {dayLabel(latest.at).toLowerCase()}</span>
+                </p>
+              ) : (
+                <p className="fine">No check-ins yet.</p>
+              )}
+            </div>
+          </header>
+
+          {story.days.length > 0 ? (
+            <>
+              <h2 className="section">Their days</h2>
+              <div className="strip-scroll" ref={scroller}>
+                <PebbleStrip
+                  days={story.days.slice(-14)}
+                  selected={selected}
+                  onSelect={setSelected}
+                  label="Tap a day"
+                />
+              </div>
+              <Legend />
+              {day && (
+                <DayCard
+                  day={day}
+                  story={story}
+                  isLatest={day.id === story.days[story.days.length - 1]?.id}
+                />
+              )}
+            </>
           ) : (
-            <p className="lede">
-              No check-ins yet. After five steady ones, this page can say whether a new day looks
-              like their usual.
-            </p>
+            <section className="empty">
+              <Pebble status="empty" size={96} />
+              <p className="lede">
+                The first check-in starts their record. After five steady days we can say whether a
+                new day looks like their usual.
+              </p>
+            </section>
           )}
-          <DayChart days={story.days} band={story.latest?.verdict.pulseBand ?? null} />
-          <h2>The record</h2>
-          {story.days.length === 0 ? (
-            <p>Nothing written down yet.</p>
-          ) : (
-            <DayList
-              days={[...story.days].reverse()}
-              showEarlier={showEarlier}
-              onToggle={() => setShowEarlier((open) => !open)}
-            />
+
+          {story.days.length >= 2 && (
+            <details className="card fold">
+              <summary>Pulse over time</summary>
+              <DayChart days={story.days} band={latest?.verdict.pulseBand ?? null} />
+            </details>
           )}
-          <details className="method">
+          <details className="card fold">
             <summary>How “usual” is decided</summary>
             <p>
-              A pulse or breathing number counts only when its confidence meets the library’s steady
-              mark (40 for pulse, 45 for breathing), it sits in the range that method can read, and
-              the check-in had at least 8 separate seconds at that mark. We then need 5 earlier days
-              — one reading a day, by the UTC date — before we say usual or different. Until then
-              the line is “still learning their usual”. HRV and face descriptions are shown when we
-              have them. They are not part of that comparison, and nothing here is a wellbeing
-              score. Missing seconds are not filled in.
+              We compare {story.name} only with {story.name}. A number counts when the measurement
+              was steady for at least 8 seconds. After 5 earlier days, the middle half of those days
+              becomes their usual. We only say “different” when a number falls well outside it.
+              Beat-to-beat and face readings are not part of this, and nothing here is a score.
             </p>
           </details>
+
           <div className="stack">
-            <button className="btn wide" type="button" onClick={onSummary}>
-              One-page summary
+            <button className="btn moss wide" type="button" onClick={onCheckIn}>
+              Check in with {story.name}
             </button>
-            <button className="btn secondary wide" type="button" onClick={onCheckIn}>
-              Start a check-in
+            <button className="btn secondary wide" type="button" onClick={onSummary}>
+              One-page summary for a professional
             </button>
           </div>
-          <Disclaimer text={story.disclaimer} />
+          <Disclaimer />
         </>
       )}
     </Shell>
   );
 }
 
-const RECENT_DAYS = 4;
-
-function DayList({
-  days,
-  showEarlier,
-  onToggle,
-}: {
-  days: StoryDay[];
-  showEarlier: boolean;
-  onToggle: () => void;
-}) {
-  const visible = showEarlier ? days : days.slice(0, RECENT_DAYS);
-  const hidden = days.length - visible.length;
+function Legend() {
   return (
-    <>
-      <p className="fine">
-        Face descriptions and beat-to-beat numbers, when a sitting has them, are not part of usual
-        or different, and they are not a wellbeing score.
-      </p>
-      <ol className="timeline">
-        {visible.map((day) => {
-          return (
-            <li key={day.id} className={day.status === 'different' ? 'different' : undefined}>
-              <p className="day-date">{dayLabel(day.at)}</p>
-              <div>
-                <p style={{ margin: 0 }}>
-                  <strong>{day.moodLabel ?? 'No picture'}</strong>
-                  {day.pulse !== null ? ` · pulse ${whole(day.pulse)}` : ''}
-                  {day.breathing !== null ? ` · breathing ${whole(day.breathing)}` : ''}
-                </p>
-                <p className="fine" style={{ margin: '0.15rem 0 0' }}>
-                  {day.pulseValidSeconds !== null
-                    ? `${day.pulseValidSeconds}s steady pulse`
-                    : 'pulse seconds unknown'}
-                  {day.breathingValidSeconds !== null
-                    ? ` · ${day.breathingValidSeconds}s steady breathing`
-                    : ''}
-                  {day.pulseSamples !== null ? ` · ${day.pulseSamples} pulse samples` : ''}
-                  {day.endedReason === 'withdrawn' ? ' · agreement withdrawn' : ''}
-                  {day.hrvRmssd !== null ? ` · RMSSD ${Math.round(day.hrvRmssd)} ms` : ''}
-                  {day.expressionWords ? ` · camera saw ${day.expressionWords}` : ''}
-                </p>
-                <p className="fine" style={{ margin: '0.15rem 0 0' }}>
-                  {day.status === 'different'
-                    ? 'Different from the days before it'
-                    : day.status === 'usual'
-                      ? 'Inside their own spread'
-                      : day.status === 'learning'
-                        ? 'Written down, not compared yet'
-                        : 'No steady stretch'}
-                </p>
-                {day.note && <p className="note-quote">“{day.note}”</p>}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      {days.length > RECENT_DAYS && (
-        <button className="btn secondary" type="button" onClick={onToggle}>
-          {showEarlier ? 'Show the latest days' : `Show earlier days (${hidden})`}
-        </button>
+    <ul className="legend" aria-label="What the pebbles mean">
+      <li>
+        <Pebble status="usual" size={14} /> usual
+      </li>
+      <li>
+        <Pebble status="different" size={14} /> different
+      </li>
+      <li>
+        <Pebble status="learning" size={14} /> still learning
+      </li>
+    </ul>
+  );
+}
+
+function DayCard({ day, story, isLatest }: { day: StoryDay; story: Story; isLatest: boolean }) {
+  const mood = day.moodLabel ? MOOD_BY_LABEL[day.moodLabel] : undefined;
+  const verdict = isLatest ? story.latest?.verdict : null;
+  return (
+    <article className={`day-card ${day.status}`} aria-live="polite">
+      <div className="day-card-head">
+        {mood ? (
+          <span className={`day-mood mood-${mood}`}>
+            <MoodArt id={mood} className="day-mood-art" />
+          </span>
+        ) : null}
+        <div>
+          <p className="fine">{dayLabel(day.at)}</p>
+          <h3>{day.moodLabel ?? 'No picture tapped'}</h3>
+          <p className={`chip ${day.status}`}>{statusWord(day.status)}</p>
+        </div>
+      </div>
+      {day.note && <p className="note-quote">“{day.note}”</p>}
+      {verdict ? (
+        <>
+          <RangeBar label="Pulse" unit="/min" value={verdict.pulseValue} band={verdict.pulseBand} />
+          <RangeBar
+            label="Breathing"
+            unit="/min"
+            value={verdict.breathingValue}
+            band={verdict.breathingBand}
+          />
+        </>
+      ) : (
+        <p className="day-numbers">
+          {day.pulse !== null && (
+            <span>
+              <small>Pulse</small> {whole(day.pulse)}
+            </span>
+          )}
+          {day.breathing !== null && (
+            <span>
+              <small>Breathing</small> {whole(day.breathing)}
+            </span>
+          )}
+        </p>
       )}
-    </>
+      <details className="fold-inline">
+        <summary>Measurement details</summary>
+        <p className="fine">
+          {day.pulseValidSeconds !== null
+            ? `${day.pulseValidSeconds}s steady pulse`
+            : 'Pulse seconds unknown'}
+          {day.breathingValidSeconds !== null
+            ? ` · ${day.breathingValidSeconds}s steady breathing`
+            : ''}
+          {day.endedReason === 'withdrawn' ? ' · agreement withdrawn' : ''}
+          {day.hrvRmssd !== null ? ` · beat-to-beat RMSSD ${Math.round(day.hrvRmssd)} ms` : ''}
+          {day.expressionWords ? ` · camera saw ${day.expressionWords}` : ''}.
+        </p>
+      </details>
+    </article>
   );
 }
