@@ -53,9 +53,20 @@ function guide(elapsedMs: number, talking: boolean): string {
   return 'That’s plenty. Tap Done when you’re ready.';
 }
 
+const ADVISORY_CODES = new Set([3, 7, 11, 12, 15]);
+
 function visibleHint(signals: Signals, elapsedMs: number): string {
-  if (signals.validation.code !== 0 && signals.validation.hint.trim())
-    return signals.validation.hint.trim();
+  const code = signals.validation.code;
+  if (code === 11) return 'Hold still. A slightly slower camera is fine.';
+  if (ADVISORY_CODES.has(code) && (signals.pulse || signals.breathing)) {
+    return guide(elapsedMs, signals.talking);
+  }
+  if (code === 7) return 'See if your shoulders sit in the circle too, then hold still.';
+  if (code === 15)
+    return 'Tilt the phone a little so your face sits in the middle, then hold still.';
+  if (code === 3) return 'Keep your face in the middle of the circle.';
+  if (code === 12) return 'Hold a little stiller, if you can.';
+  if (code !== 0 && signals.validation.hint.trim()) return signals.validation.hint.trim();
   if (!signals.pulse && elapsedMs > 8000) {
     return 'Come a little closer, with light on your face, and hold still.';
   }
@@ -202,9 +213,9 @@ export function CheckIn({
           audio: false,
           video: {
             facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30, min: 24 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30 },
           },
         });
       } catch {
@@ -360,7 +371,7 @@ export function CheckIn({
           encoding ||
           video.videoWidth <= 0 ||
           ws.readyState !== WebSocket.OPEN ||
-          ws.bufferedAmount >= 1_500_000 ||
+          ws.bufferedAmount >= 250_000 ||
           (paced && now - lastSent < 1000 / 30)
         ) {
           schedule();
@@ -374,7 +385,7 @@ export function CheckIn({
             blob &&
             running.current &&
             ws.readyState === WebSocket.OPEN &&
-            ws.bufferedAmount < 1_500_000
+            ws.bufferedAmount < 250_000
           ) {
             const jpeg = new Uint8Array(await blob.arrayBuffer());
             const packet = new Uint8Array(8 + jpeg.length);
@@ -590,12 +601,12 @@ export function CheckIn({
       <div className="readouts">
         <Readout
           label="Pulse"
-          value={pulseSteady && signals.pulse ? whole(signals.pulse.value) : null}
+          value={signals.pulse ? whole(signals.pulse.value) : null}
           waiting="finding"
         />
         <Readout
           label="Breathing"
-          value={breathSteady && signals.breathing ? whole(signals.breathing.value) : null}
+          value={signals.breathing ? whole(signals.breathing.value) : null}
           waiting="finding"
         />
       </div>
@@ -662,13 +673,14 @@ function resultLine(
   return 'Not enough steady seconds to compare this time. That is fine. The picture still counts.';
 }
 
-const JPEG_QUALITY = 0.7;
+const JPEG_QUALITY = 0.5;
+const JPEG_LONG_EDGE = 320;
 let jpegCanvas: OffscreenCanvas | null = null;
 let jpegFallback: HTMLCanvasElement | null = null;
 
 async function encodeJpeg(video: HTMLVideoElement): Promise<Blob | null> {
   const longEdge = Math.max(video.videoWidth, video.videoHeight);
-  const scale = Math.min(1, 640 / longEdge);
+  const scale = Math.min(1, JPEG_LONG_EDGE / longEdge);
   const width = Math.max(2, Math.round((video.videoWidth * scale) / 2) * 2);
   const height = Math.max(2, Math.round((video.videoHeight * scale) / 2) * 2);
   try {

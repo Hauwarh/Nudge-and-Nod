@@ -9,7 +9,7 @@ import {
   publicSignals,
   type SignalSnapshot,
 } from './metrics.js';
-import { acceptTimestamp, jpegToRgb } from './frames.js';
+import { acceptTimestamp, jpegToRgb, nextPacedTimestamp, type DecodedFrame } from './frames.js';
 import {
   friendlySdkError,
   isBenignSdkNoise,
@@ -40,7 +40,12 @@ export class LiveSession {
   private closed = false;
   private framesFailed = false;
   private framesSent = 0;
+  private uniqueFrames = 0;
   private lastTs = -1;
+  private lastSendAt = 0;
+  private lastFrame: DecodedFrame | null = null;
+  private lastJpegBytes = 0;
+  private pacer: ReturnType<typeof setInterval> | null = null;
   private validationOk = 0;
   private validationTotal = 0;
   private validation = { code: 0, hint: '' };
@@ -103,7 +108,13 @@ export class LiveSession {
     sdk.on('validationStatus', (code: number, _timestampUs: number, hint: string) => {
       this.validationTotal += 1;
       if (code === 0) this.validationOk += 1;
-      const next = { code, hint: typeof hint === 'string' ? hint : '' };
+      const hintText =
+        code === 11
+          ? 'Hold still. A slightly slower camera is fine.'
+          : typeof hint === 'string'
+            ? hint
+            : '';
+      const next = { code, hint: hintText };
       const changed = next.code !== this.validation.code;
       this.validation = next;
       if (changed) {
@@ -242,14 +253,38 @@ export class LiveSession {
 
   async pushJpeg(jpegBytes: Buffer, timestampUs: number): Promise<{ ok: boolean; reason: string }> {
     if (this.closed || !this.sdk || !this.loaded) return { ok: false, reason: 'closed' };
-    if (!acceptTimestamp(this.lastTs, timestampUs)) return { ok: false, reason: 'timestamp' };
     const frame = await jpegToRgb(jpegBytes);
     if (!frame) return { ok: false, reason: 'decode' };
-    this.lastTs = timestampUs;
+    if (frame.rgb.length !== frame.width * frame.height * 3) return { ok: false, reason: 'decode' };
+    this.lastFrame = frame;
+    this.lastJpegBytes = jpegBytes.length;
+    const ts = this.lastTs < 0 ? timestampUs : nextPacedTimestamp(this.lastTs, timestampUs);
+    const result = this.dispatchRgb(frame, ts, true);
+    if (result.ok) this.startPacer();
+    return result;
+  }
+
+  private startPacer(): void {
+    if (this.pacer) return;
+    this.pacer = setInterval(() => this.padIfNeeded(), 33);
+    this.pacer.unref();
+  }
+
+  private padIfNeeded(): void {
+    if (this.closed || this.framesFailed || !this.lastFrame) return;
+    if (Date.now() - this.lastSendAt < 32) return;
+    this.dispatchRgb(this.lastFrame, nextPacedTimestamp(this.lastTs), false);
+  }
+
+  private dispatchRgb(
+    frame: DecodedFrame,
+    timestampUs: number,
+    unique: boolean,
+  ): { ok: boolean; reason: string } {
+    if (this.closed || !this.sdk || !this.loaded) return { ok: false, reason: 'closed' };
+    if (!acceptTimestamp(this.lastTs, timestampUs)) return { ok: false, reason: 'timestamp' };
     // Packed RGB, not RGBA. Stride is width * 3. timestampUs is monotonic
-    // microseconds (the phone's performance clock), the same contract as
-    // Number(process.hrtime.bigint() / 1000n) on a local probe: strictly
-    // increasing, not wall-clock. A 640x480 frame is stride 1920.
+    // microseconds: strictly increasing, not wall-clock.
     if (frame.rgb.length !== frame.width * frame.height * 3) return { ok: false, reason: 'decode' };
     const stride = frame.width * 3;
     let sent: boolean;
@@ -276,7 +311,10 @@ export class LiveSession {
       return { ok: false, reason: 'rejected' };
     }
     if (sent) {
+      this.lastTs = timestampUs;
+      this.lastSendAt = Date.now();
       this.framesSent += 1;
+      if (unique) this.uniqueFrames += 1;
       if (this.framesSent === 1) {
         logger.info({ width: frame.width, height: frame.height }, 'first frame reached the sdk');
       }
@@ -286,9 +324,14 @@ export class LiveSession {
           {
             framesSent: this.framesSent,
             fps: Number((this.framesSent / seconds).toFixed(1)),
+            uniqueFrames: this.uniqueFrames,
+            uniqueFps: Number((this.uniqueFrames / seconds).toFixed(1)),
+            jpegBytes: this.lastJpegBytes,
             validation: this.validation.code,
             pulse: this.snapshot.pulse?.value ?? null,
+            pulseConfidence: this.snapshot.pulse?.confidence ?? null,
             breathing: this.snapshot.breathing?.value ?? null,
+            breathingConfidence: this.snapshot.breathing?.confidence ?? null,
           },
           'live session progress',
         );
@@ -313,6 +356,11 @@ export class LiveSession {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.pacer) {
+      clearInterval(this.pacer);
+      this.pacer = null;
+    }
+    this.lastFrame = null;
     const sdk = this.sdk;
     this.sdk = null;
     if (!sdk) return;

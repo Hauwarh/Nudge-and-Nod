@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyMetrics, emptySnapshot, expressionWords } from '../src/metrics.js';
+import { applyMetrics, emptySnapshot, expressionWords, publicSignals } from '../src/metrics.js';
 
 test('expression words stay descriptive, not diagnostic', () => {
   assert.equal(expressionWords(5), 'a smile');
@@ -44,6 +44,16 @@ test('snake_case traces and HRV confidence gate are read', () => {
   assert.equal(snapshot.breathTrace, -0.4);
   assert.equal(snapshot.kept.hrv?.rmssd, 33.2);
   assert.equal(snapshot.kept.hrv?.meanNn, 800);
+});
+
+test('publicSignals shows breathing at confidence 0 while kept stays empty', () => {
+  const snapshot = applyMetrics(emptySnapshot(), {
+    breathing: { rate: [{ value: 24.2, confidence: 0, stable: false }] },
+  });
+  assert.equal(snapshot.kept.breathing, null);
+  const shown = publicSignals(snapshot, { code: 0, hint: '' });
+  assert.equal(shown.breathing?.value, 24.2);
+  assert.equal(shown.breathing?.confidence, 0);
 });
 
 test('a raw buffer is ignored', () => {
