@@ -27,6 +27,10 @@ Taken in a phone-sized browser. Replace them with a recording from the Android p
 
 ![June’s days, including one that sat outside her own recent spread](docs/screenshots/story.png)
 
+## Demo video
+
+A live check-in on an Android phone: https://youtube.com/shorts/1r6C3vU1tgM
+
 ## Try it in two minutes
 
 The sample house is already full of made-up days, so you can look around with no camera and no API key.
@@ -123,7 +127,7 @@ npm run build
 npm start
 ```
 
-`npm run probe -w server` loads the native SDK and prints its version. It only calls `start()` / `sendFrame()` when `SMARTSPECTRA_API_KEY` is set. Without a key it stops after the library loads, which is what happened in development here. See [What was and was not tested](#what-was-and-was-not-tested).
+`npm run probe -w server` loads the native SDK and prints its version. It calls `start()` / `sendFrame()` only when `SMARTSPECTRA_API_KEY` is set. Without a key it stops after the library loads. A real key was used for the phone check-in in [What was and was not tested](#what-was-and-was-not-tested).
 
 ## Deploy from an Android phone
 
@@ -259,12 +263,13 @@ Tested here:
 - `npm run build` for the server and the web app.
 - Loading `@smartspectra/node-sdk` 3.5.0 on Linux x64, glibc 2.39. The native module loaded. Resident memory after import was about 110MB. `PixelFormat.kRGB` is 0 and `FrameTransform.kNone` is 0, matching the docs.
 - The sample house and sample check-in in a browser, without a camera. See the screenshots.
+- A real end-to-end check-in on an Android phone, through the live server, with a real Presage API key. `sdk.start()` and `sendFrame()` ran, and live pulse and breathing came back. One sitting gave pulse 67/min and breathing 16/min, inside the sample person’s usual range.
+- The phone camera gave about 6–10 unique frames per second. The server repeats the newest frame on a 30 fps clock so the sitting meets the SDK’s 25 fps minimum. Below that, the session ends with error 14.
 
-Not tested here:
+Not tested as a correctness claim:
 
-- A real face in front of a phone camera, end to end. There is no camera on this machine, and no Presage API key in the environment.
-- `sdk.start()` and `sendFrame()` against Presage. A probe that constructed the SDK with a dummy key opened a TLS connection and did not return within ten minutes, so the process was stopped. That blocks the Node thread inside the constructor; the HTTP server would be stuck for the same wait. With a real key on Render the call should return. If it does not, the check-in cannot start and the sample check-in is the path that still works. Do not restart a failed measurement automatically; the SDK docs say a sustained low frame rate is retryable for custom input but must be started again by the person.
 - Breathing and pulse accuracy. The library’s confidence is shown as the library reports it. It is not a claim about correctness.
+- A dummy key can block inside the SDK constructor. Use a real key.
 
 ## SDK notes that shaped the design
 
