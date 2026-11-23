@@ -1,12 +1,3 @@
----
-title: Nudge & Nod
-emoji: 🌿
-colorFrom: yellow
-colorTo: green
-sdk: docker
-app_port: 7860
----
-
 # Nudge & Nod
 
 A calm daily check-in for someone who may not easily say how they feel, and a plain record for the family who looks after them.
@@ -17,23 +8,13 @@ The phone shows a live camera preview and, when the Presage library has had long
 
 Nudge & Nod is not a medical device. If you are worried, contact a doctor or a person you trust.
 
-## Screenshots
+[![Watch the Nudge & Nod demo](https://img.youtube.com/vi/1r6C3vU1tgM/hqdefault.jpg)](https://youtube.com/shorts/1r6C3vU1tgM)
 
-Taken in a phone-sized browser. Replace them with a recording from the Android phone before you publish the DEV post.
+A live check-in on an Android phone.
 
-![The sample house, before today’s check-in](docs/screenshots/home.png)
+## For judges
 
-![A check-in, camera indicator up, picture board ready](docs/screenshots/checkin.png)
-
-![June’s days, including one that sat outside her own recent spread](docs/screenshots/story.png)
-
-## Demo video
-
-A live check-in on an Android phone: https://youtube.com/shorts/1r6C3vU1tgM
-
-## Try it in two minutes
-
-The sample house is already full of made-up days, so you can look around with no camera and no API key.
+The sample house is already full of made-up days, so you can look around with no camera and no API key. The word and PIN are also printed on the welcome screen.
 
 |            |                                                              |
 | ---------- | ------------------------------------------------------------ |
@@ -42,6 +23,12 @@ The sample house is already full of made-up days, so you can look around with no
 | People     | June and Arthur are checked in. Sam holds the key with them. |
 
 June’s latest sitting looks like her own recent days. One earlier day (a high pulse, faster breathing, the picture “Unsettled”) is marked different. Arthur does not have five steady sittings yet, so his page says we are still learning his days.
+
+- **Try the sample instead** on the agreement screen runs the full check-in UI with sample signals and no camera. Use this if the key, the camera, or the cold start is in the way.
+- A live check-in needs `SMARTSPECTRA_API_KEY` on the server. The home page says when the key is missing.
+- Settings includes retention (7, 30, or 90 days), **Delete all our data**, and, in the sample house, **Restore sample days**.
+- The one-page summary prints to PDF from Chrome’s share or print sheet.
+- Tests: `npm test`. They cover the comparison and the HTTP routes. They do not call Presage.
 
 ## What a check-in is
 
@@ -129,77 +116,11 @@ npm start
 
 `npm run probe -w server` loads the native SDK and prints its version. It calls `start()` / `sendFrame()` only when `SMARTSPECTRA_API_KEY` is set. Without a key it stops after the library loads. A real key was used for the phone check-in in [What was and was not tested](#what-was-and-was-not-tested).
 
-## Deploy from an Android phone
+## Deploy
 
-You do not need a laptop. You do need Chrome, a GitHub account, a Render account, and a Presage key. Render gives you HTTPS, which the camera requires.
+The repo ships a `Dockerfile` and `render.yaml`. It runs on any Docker host over HTTPS, which the camera needs. A live reading needs about 2 CPU cores and 1 GB of RAM, so Render’s free 512MB instance is too small.
 
-### 1. Get a Presage key
-
-1. In Chrome, open https://physiology.presagetech.com .
-2. Register a free developer account.
-3. Create an API key and copy it into a note on the phone. Leave that note open.
-
-Do not put the key in the repository, in a screenshot, or in the DEV post.
-
-### 2. Open Render
-
-1. Open https://dashboard.render.com and sign up. “Sign in with GitHub” is the least painful path on a phone, because the next step connects this repository.
-2. If GitHub asks you to authorise Render, allow it.
-
-### 3. Create the service from this repo
-
-This repository includes `render.yaml` (a Blueprint) and a `Dockerfile`.
-
-1. In Render, choose **New**, then **Blueprint**.
-2. Select this GitHub repository and the branch you want to deploy (after this pull request is merged, that is `main`).
-3. When Render shows environment variables, paste the Presage key into `SMARTSPECTRA_API_KEY`. Leave `SMARTSPECTRA_TELEMETRY` as `false` and `SEED_DEMO` as `true`.
-4. Choose the **free** instance if it is offered. If the free plan is not on the screen, the smallest paid web service works the same way.
-5. Start the deploy.
-
-The first build downloads the SmartSpectra runtime. That package depends on four platform builds, roughly 100MB each, about 350MB together. The Dockerfile installs them and then deletes the macOS, Windows, and Linux ARM builds in the same step, so the image keeps the Linux x64 runtime only. A free build can be slow. If it fails, run it once more. If it fails because the builder runs out of memory or time, use **New → Web Service**, runtime **Docker**, and the same environment variables. The Dockerfile is the same either way.
-
-A non-Docker fallback, if you would rather use Render’s Node runtime (the host must be Ubuntu 22.04 or newer):
-
-- Build command: `npm ci && npm run build && rm -rf node_modules/@smartspectra/node-sdk-darwin-arm64 node_modules/@smartspectra/node-sdk-win32-x64 node_modules/@smartspectra/node-sdk-linux-arm64`
-- Start command: `npm start`
-- Node version: 22
-
-### 4. Open it on the phone
-
-1. When the service is live, open the `https://….onrender.com` address.
-2. The first open after the service has been asleep can sit on “Waking the house up” for a minute. That is the free tier starting, not a broken page. Pull to refresh if it sits longer than two minutes.
-3. Tap **Look around the sample house**, or come in with house word `maple` and PIN `2468`.
-4. Walk the sample check-in first. The camera stays off.
-5. For a live check-in, start June’s (or anyone’s) check-in, agree with them present, and tap **Start the camera**. Chrome will ask for the camera. Allow it. Prop the phone. Stop is on the screen the whole time.
-
-### Things the free host will do
-
-- **Sleep.** After a while with no visitors the service turns off. The next visit wakes it.
-- **Forget the database.** The free disk is ephemeral. A restart or a new deploy can wipe check-ins. The sample house is recreated on boot if it is missing. Do not treat this as the only copy of a real record. The one-page summary can be printed or shared before that happens.
-- **Run one measurement at a time.** A second check-in is told to wait.
-- **Possibly run out of memory** once the native models are in use. Loading the library alone was about 110MB of resident memory in development. A real measurement loads more. If a live check-in dies as soon as it starts and the Render log shows the process exiting, move the service to an instance with more than 512MB of RAM.
-
-Do not turn on more than one instance. The SDK session and the SQLite file are both local to the one process.
-
-## Deploy on Hugging Face Spaces
-
-The same Docker image runs on a free Hugging Face Space (2 vCPU, 16 GB). The app listens on the `PORT` environment variable. Spaces sets that to **7860**, and the README front matter tells the Space proxy to use that port. Render sets its own `PORT`; both hosts work without a code change.
-
-1. Create a new Space. Choose **Docker** as the SDK. You can point it at this repository.
-2. In Space settings, add a secret named `SMARTSPECTRA_API_KEY`. Do not put the key in the Dockerfile or the README.
-3. Leave `SMARTSPECTRA_TELEMETRY` unset or `false`.
-4. The container runs as uid 1000. Check-ins are stored in `/data`, which is writable by that user. A free Space disk is ephemeral, same as Render’s free disk: a restart can forget the days. The sample house is recreated if it is missing.
-5. Open the Space URL over HTTPS and allow the camera only when a check-in starts.
-
-## For judges
-
-- House word `maple`, PIN `2468`. Also printed on the welcome screen.
-- The days are made up. June shows both “usual” and “different”. Arthur shows “still learning”.
-- **Try the sample instead** on the agreement screen runs the full check-in UI with sample signals and no camera. Use this if the key, the camera, or the cold start is in the way.
-- A live check-in needs `SMARTSPECTRA_API_KEY` on the server. The home page says when the key is missing.
-- Settings includes retention (7, 30, or 90 days), **Delete all our data**, and, in the sample house, **Restore sample days**.
-- The one-page summary prints to PDF from Chrome’s share or print sheet.
-- Tests: `npm test`. They cover the comparison and the HTTP routes. They do not call Presage.
+Set `SMARTSPECTRA_API_KEY` as a secret. Leave `SMARTSPECTRA_TELEMETRY=false` and `SEED_DEMO=true`. Run one instance only.
 
 ## Consent and data handling
 
@@ -262,7 +183,7 @@ Tested here:
 - `npm test`: the comparison (including the made-up June series), metric decoding, JPEG frame packing, and the HTTP routes (login, consent, story, summary, delete, sample restore).
 - `npm run build` for the server and the web app.
 - Loading `@smartspectra/node-sdk` 3.5.0 on Linux x64, glibc 2.39. The native module loaded. Resident memory after import was about 110MB. `PixelFormat.kRGB` is 0 and `FrameTransform.kNone` is 0, matching the docs.
-- The sample house and sample check-in in a browser, without a camera. See the screenshots.
+- The sample house and sample check-in in a browser, without a camera.
 - A real end-to-end check-in on an Android phone, through the live server, with a real Presage API key. `sdk.start()` and `sendFrame()` ran, and live pulse and breathing came back. One sitting gave pulse 67/min and breathing 16/min, inside the sample person’s usual range.
 - The phone camera gave about 6–10 unique frames per second. The server repeats the newest frame on a 30 fps clock so the sitting meets the SDK’s 25 fps minimum. Below that, the session ends with error 14.
 
