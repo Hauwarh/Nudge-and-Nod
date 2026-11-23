@@ -56,6 +56,39 @@ test('publicSignals shows breathing at confidence 0 while kept stays empty', () 
   assert.equal(shown.breathing?.confidence, 0);
 });
 
+test('a real sitting saves the steady 16.7 breath, not the later 6.6', () => {
+  const samples: Array<[number, number]> = [
+    [14.8, 0],
+    [14.8, 0],
+    [9.9, 34.9],
+    [2.3, 47.05],
+    [16.7, 70.59],
+    [35.3, 16.2],
+    [7.8, 18.18],
+    [6.6, 46.7],
+  ];
+  let snapshot = emptySnapshot();
+  for (const [value, confidence] of samples) {
+    snapshot = applyMetrics(snapshot, {
+      breathing: { rate: [{ value, confidence, stable: confidence >= 45 }] },
+    });
+  }
+  assert.ok(snapshot.kept.breathing);
+  assert.ok(Math.abs((snapshot.kept.breathing?.value ?? 0) - 16.7) < 0.15);
+  assert.notEqual(snapshot.kept.breathing?.value, 6.6);
+});
+
+test('five agreeing high-confidence outliers are kept', () => {
+  let snapshot = emptySnapshot();
+  for (let i = 0; i < 5; i += 1) {
+    snapshot = applyMetrics(snapshot, {
+      breathing: { rate: [{ value: 6, confidence: 75, stable: true }] },
+    });
+  }
+  assert.equal(snapshot.kept.breathing?.value, 6);
+  assert.equal(snapshot.kept.breathing?.confidence, 75);
+});
+
 test('a raw buffer is ignored', () => {
   const snapshot = applyMetrics(emptySnapshot(), Buffer.from('nope'));
   assert.equal(snapshot.pulse, null);

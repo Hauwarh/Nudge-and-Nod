@@ -14,6 +14,7 @@ export function Orb({
   breathRate,
   pulseRate,
   progress,
+  hideFace = false,
 }: {
   mode: 'live' | 'sample';
   videoRef: RefObject<HTMLVideoElement>;
@@ -22,6 +23,8 @@ export function Orb({
   breathRate: number | null;
   pulseRate: number | null;
   progress: number;
+  /** Blur the on-screen preview only. Capture still reads the raw video. */
+  hideFace?: boolean;
 }) {
   const r = 47;
   const circumference = 2 * Math.PI * r;
@@ -48,13 +51,26 @@ export function Orb({
           strokeDashoffset={circumference * (1 - Math.min(1, progress))}
         />
       </svg>
-      <div className="orb-window">
+      <div className={`orb-window${hideFace ? ' face-hidden' : ''}`}>
         {mode === 'live' ? (
-          <video ref={videoRef} playsInline muted autoPlay aria-label="Live camera preview" />
+          <video
+            ref={videoRef}
+            className={hideFace ? 'face-hidden' : undefined}
+            playsInline
+            muted
+            autoPlay
+            aria-label="Live camera preview"
+          />
         ) : (
           <div className="sample-stage" role="img" aria-label="Sample. The camera is off.">
             <span />
           </div>
+        )}
+        {hideFace && mode === 'live' && (
+          <>
+            <span className="face-wash" aria-hidden="true" />
+            <span className="face-hidden-label">Face hidden on screen</span>
+          </>
         )}
       </div>
     </div>

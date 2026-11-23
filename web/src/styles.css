@@ -1096,6 +1096,71 @@ body:not([data-tone='night']) .mood[aria-pressed='true'] {
   transform: scaleX(-1);
   display: block;
 }
+.orb-window video.face-hidden {
+  filter: blur(18px);
+  transform: scale(-1.15, 1.15);
+}
+.face-wash {
+  position: absolute;
+  inset: 0;
+  background: rgba(46, 106, 72, 0.38);
+  pointer-events: none;
+}
+.face-hidden-label {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  z-index: 1;
+  max-width: 86%;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(18, 27, 22, 0.62);
+  color: var(--night-ink);
+  font-family: var(--font);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.face-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  min-width: 44px;
+  margin: 0.55rem auto 0;
+  padding: 0.35rem 0.95rem 0.35rem 0.45rem;
+  border-radius: 999px;
+  border: 2px solid #3d5246;
+  background: transparent;
+  color: var(--night-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.face-toggle:focus-visible {
+  outline: 3px solid var(--apricot);
+  outline-offset: 3px;
+}
+.face-toggle-knob {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  border: 2px solid var(--night-soft);
+  background: var(--night-2);
+  flex: none;
+}
+.face-toggle.on {
+  border-color: var(--moss);
+  background: rgba(46, 106, 72, 0.28);
+}
+.face-toggle.on .face-toggle-knob {
+  background: var(--moss-soft);
+  border-color: var(--moss);
+}
 .sample-stage {
   width: 100%;
   height: 100%;
