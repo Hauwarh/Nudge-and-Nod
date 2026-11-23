@@ -27,6 +27,20 @@ export function acceptTimestamp(previous: number, next: number): boolean {
   return next > previous + 500;
 }
 
+/** One step of a 30 fps clock, in microseconds. */
+export const FRAME_TICK_US = 33_333;
+
+/**
+ * Pads advance a 30 fps clock. Real capture time is kept when it is safely
+ * ahead, and nothing goes backwards.
+ */
+export function nextPacedTimestamp(lastTs: number, clientTs?: number): number {
+  const tick = lastTs + FRAME_TICK_US;
+  if (clientTs == null || !Number.isFinite(clientTs)) return tick;
+  if (clientTs > lastTs + 500) return clientTs;
+  return tick;
+}
+
 /**
  * Decode a JPEG to packed RGB for `sendFrame`. sharp returns a new buffer
  * each call. A pure-JS decode of a 640px frame is too slow to hold 25–30 fps.

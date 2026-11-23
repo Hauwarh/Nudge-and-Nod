@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import jpeg from 'jpeg-js';
-import { acceptTimestamp, jpegToRgb, parseFrame } from '../src/frames.js';
+import {
+  acceptTimestamp,
+  FRAME_TICK_US,
+  jpegToRgb,
+  nextPacedTimestamp,
+  parseFrame,
+} from '../src/frames.js';
 
 test('parseFrame reads a big-endian timestamp and the jpeg tail', () => {
   const jpegBytes = Buffer.alloc(90, 7);
@@ -19,6 +25,14 @@ test('parseFrame rejects short and non-finite timestamps', () => {
   const bad = Buffer.alloc(100);
   bad.writeDoubleBE(Number.NaN, 0);
   assert.equal(parseFrame(bad), null);
+});
+
+test('paced timestamps hold a 30 fps clock and never go backwards', () => {
+  const start = 1_000_000;
+  assert.equal(nextPacedTimestamp(start), start + FRAME_TICK_US);
+  assert.equal(nextPacedTimestamp(start, start + 80_000), start + 80_000);
+  assert.equal(nextPacedTimestamp(start, start - 10_000), start + FRAME_TICK_US);
+  assert.equal(nextPacedTimestamp(start, start + 400), start + FRAME_TICK_US);
 });
 
 test('timestamps must move forward', () => {

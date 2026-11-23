@@ -227,14 +227,12 @@ export function publicSignals(
   snapshot: SignalSnapshot,
   validation: { code: number; hint: string },
 ) {
+  // Show a number as soon as it exists. Saving still uses the keep minimums.
   return {
     type: 'signals' as const,
-    pulse: snapshot.pulse && snapshot.pulse.confidence > PULSE_SHOW_MIN ? snapshot.pulse : null,
-    breathing:
-      snapshot.breathing && snapshot.breathing.confidence > PULSE_SHOW_MIN
-        ? snapshot.breathing
-        : null,
-    hrv: snapshot.hrv && snapshot.hrv.confidence > PULSE_SHOW_MIN ? snapshot.hrv : null,
+    pulse: snapshot.pulse,
+    breathing: snapshot.breathing,
+    hrv: snapshot.hrv,
     expression: snapshot.expression,
     talking: snapshot.talking === true,
     pulseTrace: snapshot.pulseTrace,
